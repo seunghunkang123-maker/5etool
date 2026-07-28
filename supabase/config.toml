@@ -1,0 +1,76 @@
+# Supabase CLI 설정
+#
+#   supabase link --project-ref <project-ref>
+#   supabase db push
+#   supabase functions deploy generate-monster
+#   supabase functions deploy delete-account
+#
+# 로컬에서 전체 스택을 띄우려면 `supabase start`를 사용한다(Docker 필요).
+# 이 파일에는 비밀 키를 넣지 않는다. 시크릿은 `supabase secrets set`으로 등록한다.
+
+project_id = "arcanum-table"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+# 한 번에 돌려주는 행 수 상한. 목록은 앱에서 페이지네이션한다.
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+# 운영 프로젝트와 같은 메이저 버전을 쓴다.
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+# 로컬 개발용 메일 확인함 (실제 메일을 보내지 않는다)
+[inbucket]
+enabled = true
+port = 54324
+
+[storage]
+enabled = true
+# 버킷별 상세 제한은 supabase/migrations/0004_storage.sql이 설정한다.
+file_size_limit = "8MiB"
+
+[auth]
+enabled = true
+# 운영 배포 시에는 Vercel 도메인으로 바꾼다.
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/**", "http://localhost:4173/**"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+# 운영에서는 true 권장. 로컬에서는 확인 메일 없이 바로 테스트할 수 있게 false로 둔다.
+enable_confirmations = false
+double_confirm_changes = true
+secure_password_change = true
+
+# 소셜 로그인을 쓰려면 아래 블록을 켜고 대시보드에서도 공급자를 활성화한다.
+# [auth.external.google]
+# enabled = true
+# client_id = "env(GOOGLE_CLIENT_ID)"
+# secret = "env(GOOGLE_SECRET)"
+# redirect_uri = "https://<project-ref>.supabase.co/auth/v1/callback"
+
+[realtime]
+enabled = true
+
+# ── Edge Functions ───────────────────────────────────────────────────
+# verify_jwt는 반드시 true여야 한다. 두 함수 모두 호출자 신원을 확인한 뒤
+# 데이터베이스에서 권한을 다시 검증한다.
+
+[functions.generate-monster]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true

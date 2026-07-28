@@ -14,16 +14,17 @@
 2. [빠르게 실행하기 (데모 모드)](#빠르게-실행하기-데모-모드)
 3. [Supabase 연결하기 (운영 모드)](#supabase-연결하기-운영-모드)
 4. [Edge Function 배포 (AI·계정 삭제)](#edge-function-배포-ai계정-삭제)
-5. [환경 변수](#환경-변수)
-6. [npm 스크립트와 검증](#npm-스크립트와-검증)
-7. [샘플 데이터](#샘플-데이터)
-8. [관리자 계정 설정](#관리자-계정-설정)
-9. [프로젝트 구조](#프로젝트-구조)
-10. [보안 설계 요약](#보안-설계-요약)
-11. [접근성](#접근성)
-12. [키보드 단축키](#키보드-단축키)
-13. [문서](#문서)
-14. [알려진 제약](#알려진-제약)
+5. [Vercel에 배포하기](#vercel에-배포하기)
+6. [환경 변수](#환경-변수)
+7. [npm 스크립트와 검증](#npm-스크립트와-검증)
+8. [샘플 데이터](#샘플-데이터)
+9. [관리자 계정 설정](#관리자-계정-설정)
+10. [프로젝트 구조](#프로젝트-구조)
+11. [보안 설계 요약](#보안-설계-요약)
+12. [접근성](#접근성)
+13. [키보드 단축키](#키보드-단축키)
+14. [문서](#문서)
+15. [알려진 제약](#알려진-제약)
 
 ---
 
@@ -173,6 +174,38 @@ supabase functions deploy delete-account
 
 ---
 
+## Vercel에 배포하기
+
+프론트엔드는 순수 정적 파일이라 Vercel에 그대로 올라갑니다.
+빌드 명령·출력 폴더·SPA 라우팅·캐시·보안 헤더는 저장소의 **`vercel.json`에 이미 들어 있으므로**
+대시보드에서 설정할 것은 환경 변수 두 개뿐입니다.
+
+```bash
+npm i -g vercel
+vercel link
+vercel env add VITE_SUPABASE_URL production        # https://<project-ref>.supabase.co
+vercel env add VITE_SUPABASE_ANON_KEY production   # anon(publishable) 키
+vercel --prod
+```
+
+배포 주소가 정해지면 Supabase에도 알려 줘야 로그인과 AI 호출이 동작합니다.
+
+```bash
+supabase secrets set ALLOWED_ORIGINS=https://<프로젝트>.vercel.app
+supabase functions deploy generate-monster         # 시크릿 반영을 위해 재배포
+```
+
+Supabase 대시보드 → Authentication → URL Configuration에 Site URL과
+Redirect URL(`https://<프로젝트>.vercel.app/**`)을 등록합니다.
+이 설정을 빠뜨리면 가입 확인 메일과 비밀번호 재설정 링크가 `localhost`로 돌아갑니다.
+
+> 환경 변수를 넣지 않아도 배포는 성공합니다. 다만 앱이 **데모 모드**로 뜨고
+> 데이터가 브라우저에만 저장됩니다. 운영 배포라면 반드시 두 값을 넣으세요.
+
+자세한 절차와 배포 전 점검 목록은 [`docs/DEPLOY.md`](docs/DEPLOY.md)에 있습니다.
+
+---
+
 ## 환경 변수
 
 `.env.example`을 참고하세요.
@@ -216,6 +249,9 @@ npm run build       통과 (코드 분할된 청크로 빌드)
 npm run test:e2e    1개 시나리오 통과 (DM·플레이어 2탭 전체 흐름, 약 30초)
 ./supabase/test/run_checks.sh
                     마이그레이션 6개 적용 + RLS 검사 전부 통과
+정적 빌드 스모크   통과 — dist/를 Vercel과 같은 방식(파일 우선, 없으면 index.html)으로
+                    서빙하고 실제 브라우저로 가입 → 캠페인 생성 → 딥 링크 새로고침 →
+                    카드 생성까지 확인. 콘솔 오류 없음.
 ```
 
 E2E는 미리 설치된 Chromium을 사용합니다. 브라우저 경로가 다르면 다음과 같이 지정합니다.
@@ -282,11 +318,13 @@ src/
   hooks/             queries, useRealtime, useAutosave, useShortcuts, useTick
   stores/            auth, preferences (Zustand)
 supabase/
+  config.toml        Supabase CLI 설정 (link · db push · functions deploy)
   migrations/        스키마 · 함수 · RLS · Storage · 시드 · GRANT
   functions/         Edge Function (generate-monster, delete-account)
   test/              로컬 PostgreSQL 검증 하네스
 e2e/                 Playwright 시나리오
 docs/                설계 문서, 배포·백업 안내, 샘플 데이터
+vercel.json          Vercel 빌드 · SPA 라우팅 · 캐시 · 보안 헤더
 ```
 
 핵심은 `src/data/repository.ts`의 **어댑터 경계**입니다.

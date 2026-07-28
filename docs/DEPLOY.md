@@ -3,13 +3,39 @@
 이 문서는 Arcanum Table을 운영 환경에 올리는 절차를 설명합니다.
 로컬 실행과 Supabase 초기 설정은 [`README.md`](../README.md)를 먼저 보세요.
 
-구성 요소는 세 가지입니다.
+기본 구성은 **Vercel(프론트엔드) + Supabase(백엔드)** 입니다.
 
-| 구성 요소 | 배포 대상 |
-| --- | --- |
-| 프론트엔드 (정적 파일) | Vercel / Netlify / Cloudflare Pages / S3+CloudFront 등 정적 호스팅 |
-| 데이터베이스 · 인증 · 저장소 · 실시간 | Supabase 프로젝트 |
-| Edge Function (`generate-monster`, `delete-account`) | Supabase Edge Functions |
+| 구성 요소 | 배포 대상 | 저장소 안의 설정 파일 |
+| --- | --- | --- |
+| 프론트엔드 (정적 파일) | **Vercel** | `vercel.json`, `.vercelignore` |
+| 데이터베이스 · 인증 · 저장소 · 실시간 | **Supabase** | `supabase/migrations/`, `supabase/config.toml` |
+| Edge Function (`generate-monster`, `delete-account`) | **Supabase Edge Functions** | `supabase/functions/` |
+
+프론트엔드는 순수 정적 파일이라 Netlify·Cloudflare Pages·S3 등으로도 배포할 수 있습니다(§3-4).
+
+### 가장 짧은 경로
+
+```bash
+# 1) 백엔드
+supabase link --project-ref <project-ref>
+supabase db push
+supabase secrets set ANTHROPIC_API_KEY=sk-ant-...        # AI를 쓸 경우에만
+supabase functions deploy generate-monster
+supabase functions deploy delete-account
+
+# 2) 프론트엔드
+vercel link
+vercel env add VITE_SUPABASE_URL production
+vercel env add VITE_SUPABASE_ANON_KEY production
+vercel --prod
+
+# 3) 배포 주소를 Supabase에 알려 주기
+supabase secrets set ALLOWED_ORIGINS=https://<프로젝트>.vercel.app
+supabase functions deploy generate-monster                # 시크릿 반영을 위해 재배포
+# 대시보드 → Authentication → URL Configuration에 Site URL / Redirect URL 등록
+```
+
+각 단계의 자세한 내용은 아래에 있습니다.
 
 ---
 
@@ -92,73 +118,89 @@ curl -i -X POST "https://<project-ref>.supabase.co/functions/v1/generate-monster
 
 ---
 
-## 3. 프론트엔드 배포
+## 3. 프론트엔드 배포 — Vercel
 
-### 3-1. 환경 변수
+저장소 루트의 **`vercel.json`에 필요한 설정이 이미 들어 있습니다.**
+빌드 명령, 출력 폴더, SPA 라우팅, 캐시 정책, 보안 헤더가 모두 포함되어 있으므로
+대시보드에서 따로 설정할 것은 환경 변수뿐입니다.
 
-빌드 시점에 주입되므로 호스팅 대시보드의 환경 변수에 등록합니다.
+```jsonc
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",     // tsc -b 후 vite build
+  "outputDirectory": "dist",
+  "installCommand": "npm ci",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [ /* 보안 헤더 + assets 영구 캐시 + index.html no-cache */ ]
+}
+```
 
-```dotenv
-VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon key>
+### 3-1. 배포 (대시보드)
+
+1. [vercel.com/new](https://vercel.com/new)에서 이 저장소를 가져옵니다.
+2. Framework Preset은 `vercel.json` 덕분에 **Vite**로 자동 인식됩니다. 그대로 둡니다.
+3. **Environment Variables**에 두 개를 등록합니다. (Production / Preview / Development 모두)
+
+   | Key | Value |
+   | --- | --- |
+   | `VITE_SUPABASE_URL` | `https://<project-ref>.supabase.co` |
+   | `VITE_SUPABASE_ANON_KEY` | anon(publishable) 키 |
+
+4. **Deploy**를 누릅니다.
+
+> 환경 변수를 넣지 않으면 앱은 오류 없이 **데모 모드**로 배포됩니다.
+> 데이터가 브라우저에만 저장되므로, 운영 배포라면 반드시 두 값을 넣으세요.
+
+### 3-2. 배포 (CLI)
+
+```bash
+npm i -g vercel
+vercel login
+vercel link                 # 프로젝트 연결
+
+vercel env add VITE_SUPABASE_URL production
+vercel env add VITE_SUPABASE_ANON_KEY production
+
+vercel --prod               # 배포
 ```
 
 **`VITE_` 접두사가 붙은 값은 모두 클라이언트 번들에 포함됩니다.**
-`ANTHROPIC_API_KEY`나 service_role 키에는 절대로 이 접두사를 붙이지 마세요.
+`ANTHROPIC_API_KEY`나 service_role 키에는 절대로 이 접두사를 붙이지 말고,
+Vercel이 아니라 **Supabase 시크릿**(`supabase secrets set`)에 넣으세요.
 
-### 3-2. 빌드
+### 3-3. 배포 후 Supabase 쪽 마무리
+
+Vercel 도메인이 정해지면 Supabase에 알려 줘야 로그인과 AI 호출이 동작합니다.
 
 ```bash
-npm ci
-npm run build      # dist/ 생성
+# CORS 허용 출처 (Edge Function)
+supabase secrets set ALLOWED_ORIGINS=https://<프로젝트>.vercel.app
+supabase functions deploy generate-monster    # 시크릿 변경 후 재배포 필요
+supabase functions deploy delete-account
 ```
 
-| 설정 | 값 |
-| --- | --- |
-| Build command | `npm run build` |
-| Output directory | `dist` |
-| Node 버전 | 20 이상 |
+Supabase 대시보드 → Authentication → URL Configuration:
 
-### 3-3. SPA 라우팅
+- Site URL: `https://<프로젝트>.vercel.app`
+- Redirect URLs: `https://<프로젝트>.vercel.app/**`
+  - Vercel 프리뷰 배포에서도 로그인하려면 `https://<프로젝트>-*.vercel.app/**`를 추가합니다.
+  - 커스텀 도메인을 붙였다면 그 주소도 함께 등록합니다.
 
-React Router를 쓰므로 모든 경로를 `index.html`로 넘겨야 합니다.
+이 설정을 빠뜨리면 회원가입 확인 메일과 비밀번호 재설정 링크가 `localhost`로 돌아갑니다.
 
-- **Vercel** — `vercel.json`
+### 3-4. 다른 정적 호스팅을 쓸 경우
 
-  ```json
-  { "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }] }
-  ```
+SPA 라우팅만 직접 설정하면 됩니다.
 
-- **Netlify** — `public/_redirects`
+- **Netlify** — `public/_redirects`에 `/*  /index.html  200`
+- **Nginx** — `try_files $uri $uri/ /index.html;`
 
-  ```
-  /*  /index.html  200
-  ```
+캐시는 `index.html`을 `no-cache`로, `assets/*`를 `public, max-age=31536000, immutable`로 두세요.
+파일 이름에 해시가 붙기 때문에 에셋은 영구 캐시가 안전합니다.
 
-- **Nginx**
+### 3-5. Content-Security-Policy (선택)
 
-  ```nginx
-  location / {
-    try_files $uri $uri/ /index.html;
-  }
-  ```
-
-### 3-4. 캐시 정책
-
-- `index.html` — `no-cache` (새 배포가 즉시 반영되도록)
-- `assets/*` — 파일 이름에 해시가 붙으므로 `public, max-age=31536000, immutable`
-
-### 3-5. 권장 응답 헤더
-
-```
-Strict-Transport-Security: max-age=31536000; includeSubDomains
-X-Content-Type-Options: nosniff
-Referrer-Policy: strict-origin-when-cross-origin
-X-Frame-Options: DENY
-Permissions-Policy: camera=(), microphone=(), geolocation=()
-```
-
-Content-Security-Policy를 적용한다면 Supabase 주소를 허용해야 합니다.
+`vercel.json`에는 기본 보안 헤더만 넣어 두었습니다. CSP까지 적용하려면 Supabase 주소를 허용해야 합니다.
 
 ```
 default-src 'self';
@@ -185,6 +227,10 @@ font-src 'self' data:;
 - [ ] Edge Function이 인증 없이 호출되면 401을 반환하는지 확인
 - [ ] `ALLOWED_ORIGINS`가 배포 도메인으로 설정되어 있는지 확인
 - [ ] Site URL / Redirect URL이 배포 도메인인지 확인
+- [ ] Vercel 환경 변수에 `VITE_SUPABASE_URL`·`VITE_SUPABASE_ANON_KEY`가 등록되어 있는지 확인
+      (빠뜨리면 오류 없이 **데모 모드**로 배포되어 데이터가 브라우저에만 저장됩니다)
+- [ ] 배포된 주소에서 딥 링크를 직접 열었을 때 404가 아닌지 확인
+      (예: `https://<도메인>/signup` 새로고침 — `vercel.json`의 rewrite가 동작해야 합니다)
 - [ ] 운영자 계정 지정 (`profiles.is_admin`)
 - [ ] 백업 계획 확인 → [`BACKUP.md`](BACKUP.md)
 

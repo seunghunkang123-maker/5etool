@@ -1,0 +1,9 @@
+# Vercel에 올릴 필요 없는 산출물만 제외한다.
+# 주의: 소스와 docs는 제외하지 않는다. 빌드의 `tsc -b`가 src의 테스트 파일까지 타입 검사하고,
+#       그 테스트가 docs/sample/sample-campaign.json을 import하기 때문이다.
+test-results
+playwright-report
+blob-report
+coverage
+dist
+*.tsbuildinfo
