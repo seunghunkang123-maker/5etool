@@ -1,25 +1,35 @@
-import tailwindcss from '@tailwindcss/vite';
+/// <reference types="vitest/config" />
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'node:path';
 
-export default defineConfig(({mode}) => {
-  const env = loadEnv(mode, '.', '');
-  return {
-    plugins: [react(), tailwindcss()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-    },
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+  build: {
+    target: 'es2022',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        // 초기 화면에 필요 없는 무거운 의존성은 별도 청크로 분리한다.
+        manualChunks: {
+          editor: ['@tiptap/react', '@tiptap/starter-kit'],
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          query: ['@tanstack/react-query'],
+        },
       },
     },
-    esbuild: { drop: mode === 'production' ? ['console', 'debugger'] : [] },
-    server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-    },
-  };
+  },
+  server: { port: 5173 },
+  preview: { port: 4173 },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    css: false,
+  },
 });
