@@ -421,22 +421,41 @@ create policy ai_usage_select on public.ai_usage for select to authenticated
 
 -- ── 실시간 구독 대상 ────────────────────────────────────────────────
 -- Realtime은 RLS를 그대로 적용하므로, 권한이 없는 사용자에게는 변경이 전달되지 않는다.
+-- 이미 발행 대상인 테이블은 건너뛴다.
+-- (한 문장으로 여러 테이블을 추가하면 그중 하나만 이미 등록돼 있어도 전체가 실패한다.
+--  Supabase 프로젝트에 따라 일부 테이블이 미리 등록돼 있을 수 있고,
+--  이 마이그레이션을 다시 실행하는 경우도 있으므로 테이블마다 따로 확인한다.)
 do $$
+declare
+  v_table text;
 begin
-  if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
-    alter publication supabase_realtime add table
-      public.cards,
-      public.sessions,
-      public.encounters,
-      public.encounter_combatants,
-      public.combatant_conditions,
-      public.timers,
-      public.dice_rolls,
-      public.session_logs,
-      public.notifications,
-      public.player_characters,
-      public.campaign_members,
-      public.session_participants;
+  if not exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
+    return;
   end if;
+
+  foreach v_table in array array[
+    'cards',
+    'sessions',
+    'encounters',
+    'encounter_combatants',
+    'combatant_conditions',
+    'timers',
+    'dice_rolls',
+    'session_logs',
+    'notifications',
+    'player_characters',
+    'campaign_members',
+    'session_participants'
+  ]
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = v_table
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', v_table);
+    end if;
+  end loop;
 end
 $$;
