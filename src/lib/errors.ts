@@ -13,6 +13,7 @@ const CODE_MESSAGES: Record<AppError['code'], string> = {
   validation: '입력한 내용을 다시 확인해 주세요.',
   network: '네트워크 연결을 확인한 뒤 다시 시도해 주세요.',
   rate_limit: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.',
+  server: '서버에 문제가 있어 처리하지 못했습니다. 잠시 후 다시 시도하거나 관리자에게 문의해 주세요.',
   unknown: '문제가 발생했습니다. 잠시 후 다시 시도해 주세요.',
 };
 

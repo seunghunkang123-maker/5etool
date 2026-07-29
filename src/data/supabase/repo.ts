@@ -91,6 +91,55 @@ async function edgeErrorMessage(error: unknown, fallback: string): Promise<strin
   }
 }
 
+/**
+ * 회원가입 실패 원인을 사용자가 조치할 수 있는 한국어 메시지로 바꾼다.
+ *
+ * 이전에는 모든 실패를 "입력값을 확인해 주세요"로 뭉뚱그렸는데,
+ * 실제로는 서버 설정 문제(스키마 미적용, 메일 발송 실패)인 경우가 많아
+ * 사용자가 입력만 계속 고치게 만들었다. 원인별로 다음 행동을 알려 준다.
+ */
+export function signUpError(error: { message?: string; status?: number }): AppError {
+  const raw = error.message ?? '';
+  const message = raw.toLowerCase();
+
+  if (message.includes('already registered') || message.includes('already been registered')) {
+    return new AppError('이미 가입된 이메일입니다. 로그인해 주세요.', 'conflict', error);
+  }
+  if (message.includes('database error')) {
+    // handle_new_user 트리거가 실패하는 경우. 대개 마이그레이션이 끝까지 적용되지 않았다.
+    return new AppError(
+      '서버 데이터베이스가 준비되지 않아 가입에 실패했습니다. 관리자에게 문의해 주세요. (마이그레이션 적용 필요)',
+      'server',
+      error,
+    );
+  }
+  if (message.includes('password')) {
+    return new AppError('비밀번호가 서버 정책에 맞지 않습니다. 더 길고 복잡한 비밀번호를 사용해 주세요.', 'validation', error);
+  }
+  if (message.includes('email') && (message.includes('invalid') || message.includes('valid'))) {
+    return new AppError('이메일 주소를 다시 확인해 주세요.', 'validation', error);
+  }
+  if (message.includes('sending') || message.includes('smtp') || message.includes('confirmation email')) {
+    return new AppError(
+      '계정은 만들어졌지만 인증 메일을 보내지 못했습니다. 잠시 후 로그인하거나 관리자에게 문의해 주세요.',
+      'server',
+      error,
+    );
+  }
+  if (message.includes('rate limit') || error.status === 429) {
+    return new AppError('가입 시도가 너무 잦습니다. 잠시 후 다시 시도해 주세요.', 'rate_limit', error);
+  }
+  if (message.includes('signups not allowed') || message.includes('disabled')) {
+    return new AppError('현재 신규 가입이 중단되어 있습니다. 관리자에게 문의해 주세요.', 'forbidden', error);
+  }
+  // 알 수 없는 원인은 감추지 말고 원문을 함께 보여 준다. 그래야 조치할 수 있다.
+  return new AppError(
+    raw ? `회원가입에 실패했습니다. (${raw})` : '회원가입에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+    'unknown',
+    error,
+  );
+}
+
 async function currentUserId(): Promise<UUID> {
   const { data } = await sb().auth.getUser();
   if (!data.user) throw new AppError('로그인이 필요합니다.', 'unauthorized');
@@ -185,12 +234,7 @@ export function createSupabaseRepository(): Repository {
             emailRedirectTo: `${globalThis.location?.origin ?? ''}/auth/callback`,
           },
         });
-        if (error) {
-          if (error.message.includes('already registered')) {
-            throw new AppError('이미 가입된 이메일입니다.', 'conflict', error);
-          }
-          throw new AppError('회원가입에 실패했습니다. 입력값을 확인해 주세요.', 'validation', error);
-        }
+        if (error) throw signUpError(error);
         return buildSessionState();
       },
       async signIn(email, password) {

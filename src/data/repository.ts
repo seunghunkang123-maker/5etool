@@ -51,6 +51,8 @@ export class AppError extends Error {
       | 'validation'
       | 'network'
       | 'rate_limit'
+      /** 서버·데이터베이스 설정 문제. 사용자가 입력을 고쳐도 해결되지 않는다. */
+      | 'server'
       | 'unknown',
     override readonly cause?: unknown,
   ) {
