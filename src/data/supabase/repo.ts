@@ -38,7 +38,7 @@ import type {
   UserPreferences,
   UUID,
 } from '../types';
-import { defaultMonsterStats, defaultPreferences, emptySummary, SYSTEM_TEMPLATES } from '../defaults';
+import { defaultMonsterStats, defaultPreferences, emptySummary, normalizeCharacter, SYSTEM_TEMPLATES } from '../defaults';
 import { sb, toAppError, unwrap, unwrapVoid } from './client';
 import { filterCards, rankCards } from '@/domain/search';
 import { projectCardForViewer, type VisibleCard } from '@/domain/reveal';
@@ -827,24 +827,30 @@ export function createSupabaseRepository(): Repository {
 
     characters: {
       async list(campaignId) {
-        return unwrap(
+        const rows = unwrap(
           await sb().from('player_characters').select('*').eq('campaign_id', campaignId).order('created_at'),
           '캐릭터를 불러오지 못했습니다.',
         ) as PlayerCharacter[];
+        // sheet 기본값이 '{}'이라 항목이 비어 있을 수 있다. 화면에 넘기기 전에 보정한다.
+        return rows.map(normalizeCharacter);
       },
       async get(id) {
-        return unwrap(await sb().from('player_characters').select('*').eq('id', id).single(), '캐릭터를 찾을 수 없습니다.') as PlayerCharacter;
+        return normalizeCharacter(
+          unwrap(await sb().from('player_characters').select('*').eq('id', id).single(), '캐릭터를 찾을 수 없습니다.') as PlayerCharacter,
+        );
       },
       async create(campaignId, input) {
         const userId = await currentUserId();
-        return unwrap(
-          await sb()
-            .from('player_characters')
-            .insert({ ...input, campaign_id: campaignId, user_id: input.user_id ?? userId })
-            .select()
-            .single(),
-          '캐릭터를 만들지 못했습니다.',
-        ) as PlayerCharacter;
+        return normalizeCharacter(
+          unwrap(
+            await sb()
+              .from('player_characters')
+              .insert({ ...input, campaign_id: campaignId, user_id: input.user_id ?? userId })
+              .select()
+              .single(),
+            '캐릭터를 만들지 못했습니다.',
+          ) as PlayerCharacter,
+        );
       },
       async update(id, patch, expectedVersion) {
         let query = sb()
@@ -855,7 +861,7 @@ export function createSupabaseRepository(): Repository {
         const { data, error } = await query.select().maybeSingle();
         if (error) throw toAppError(error, '캐릭터를 저장하지 못했습니다.');
         if (!data) throw new AppError('다른 사용자가 먼저 내용을 수정했습니다. 변경 사항을 비교해 주세요.', 'conflict');
-        return data as PlayerCharacter;
+        return normalizeCharacter(data as PlayerCharacter);
       },
       async remove(id) {
         unwrapVoid(await sb().from('player_characters').delete().eq('id', id), '캐릭터를 삭제하지 못했습니다.');

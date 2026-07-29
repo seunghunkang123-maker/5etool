@@ -106,6 +106,62 @@ export function defaultSheetExtra(): CharacterSheetExtra {
   };
 }
 
+/**
+ * 저장된 시트 JSON을 화면이 기대하는 형태로 보정한다.
+ *
+ * player_characters.sheet의 데이터베이스 기본값은 '{}'이고, 가져오기나 예전 데이터로
+ * 일부 항목이 빠질 수 있다. 화면은 spell_slots.map()이나 currency.gp처럼 항목이
+ * 항상 있다고 가정하므로, 읽는 시점에 기본값과 병합해 빈 값으로 인한 오류를 막는다.
+ */
+export function normalizeSheet(value: unknown): CharacterSheetExtra {
+  const base = defaultSheetExtra();
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return base;
+  const raw = value as Partial<CharacterSheetExtra>;
+
+  const text = (input: unknown, fallback: string): string => (typeof input === 'string' ? input : fallback);
+  const coin = (input: unknown): number => (typeof input === 'number' && Number.isFinite(input) ? input : 0);
+
+  const currency =
+    typeof raw.currency === 'object' && raw.currency !== null
+      ? (raw.currency as Record<string, unknown>)
+      : {};
+
+  const slots = Array.isArray(raw.spell_slots)
+    ? raw.spell_slots
+        .filter((slot): slot is { level: number; current: number; max: number } =>
+          typeof slot === 'object' && slot !== null && typeof (slot as { level?: unknown }).level === 'number')
+        .map((slot) => ({
+          level: slot.level,
+          max: typeof slot.max === 'number' ? Math.max(0, slot.max) : 0,
+          current: typeof slot.current === 'number' ? Math.max(0, slot.current) : 0,
+        }))
+    : base.spell_slots;
+
+  return {
+    attacks: text(raw.attacks, base.attacks),
+    spells: text(raw.spells, base.spells),
+    equipment: text(raw.equipment, base.equipment),
+    inventory: text(raw.inventory, base.inventory),
+    features: text(raw.features, base.features),
+    languages: text(raw.languages, base.languages),
+    proficiencies: text(raw.proficiencies, base.proficiencies),
+    notes: text(raw.notes, base.notes),
+    currency: {
+      pp: coin(currency.pp),
+      gp: coin(currency.gp),
+      ep: coin(currency.ep),
+      sp: coin(currency.sp),
+      cp: coin(currency.cp),
+    },
+    spell_slots: slots,
+  };
+}
+
+/** 저장소에서 읽은 캐릭터를 화면이 안전하게 쓸 수 있는 형태로 보정한다. */
+export function normalizeCharacter<T extends { sheet?: unknown }>(row: T): T {
+  return { ...row, sheet: normalizeSheet(row.sheet) };
+}
+
 export function defaultCharacter(campaignId: UUID, userId: UUID, name: string): Omit<PlayerCharacter, 'id' | 'created_at' | 'updated_at'> {
   return {
     campaign_id: campaignId,
