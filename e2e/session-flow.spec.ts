@@ -10,6 +10,13 @@ import { expect, test, type Page } from '@playwright/test';
  *   BroadcastChannel 기반 실시간 동기화를 검증한다.
  */
 
+/**
+ * 탭 간 실시간 반영 대기 시간.
+ * 데모 모드의 탭 간 동기화는 BroadcastChannel + storage 이벤트 + 1초 폴링으로 이루어진다.
+ * 빌드 직후처럼 기기 부하가 높을 때는 전달이 늦어질 수 있어 넉넉히 잡는다.
+ */
+const CROSS_TAB_TIMEOUT = 30_000;
+
 const DM = { name: '던전마스터', email: `dm-${Date.now()}@example.test`, password: 'test-password-1' };
 const PLAYER = { name: '플레이어하나', email: `pc-${Date.now()}@example.test`, password: 'test-password-2' };
 
@@ -113,7 +120,7 @@ test.describe('던전 마스터와 플레이어의 전체 세션 흐름', () => 
     // 실제 플레이어처럼 해당 탭을 활성 상태로 둔다(백그라운드 탭은 브라우저가 작업을 지연시킨다).
     await playerPage.bringToFront();
     await playerPage.goto(sessionUrl);
-    await expect(playerPage.getByTestId('revealed-cards').getByText('고대 지도')).toBeVisible({ timeout: 15_000 });
+    await expect(playerPage.getByTestId('revealed-cards').getByText('고대 지도')).toBeVisible({ timeout: CROSS_TAB_TIMEOUT });
 
     // ── 9~10. 전투 생성 및 참가자 추가 ────────────────────────
     await dmPage.bringToFront();
@@ -146,7 +153,7 @@ test.describe('던전 마스터와 플레이어의 전체 세션 흐름', () => 
 
     // ── 14. 플레이어 화면에 HP 상태 반영 ──────────────────────
     await playerPage.bringToFront();
-    await expect(playerPage.getByTestId('initiative-서리 고블린')).toBeVisible({ timeout: 15_000 });
+    await expect(playerPage.getByTestId('initiative-서리 고블린')).toBeVisible({ timeout: CROSS_TAB_TIMEOUT });
     await expect(playerPage.getByTestId('player-round')).toContainText('라운드 1');
 
     // ── 15. 상태 효과 적용 ────────────────────────────────────
@@ -163,7 +170,7 @@ test.describe('던전 마스터와 플레이어의 전체 세션 흐름', () => 
     await dmPage.getByTestId('next-turn').click();
     await expect(dmPage.getByTestId('round-display')).toContainText('라운드 2');
     await playerPage.bringToFront();
-    await expect(playerPage.getByTestId('player-round')).toContainText('라운드 2', { timeout: 15_000 });
+    await expect(playerPage.getByTestId('player-round')).toContainText('라운드 2', { timeout: CROSS_TAB_TIMEOUT });
 
     // ── 18. 타이머 시작 ───────────────────────────────────────
     await dmPage.bringToFront();
@@ -175,7 +182,7 @@ test.describe('던전 마스터와 플레이어의 전체 세션 흐름', () => 
 
     // ── 19. 플레이어 화면에서 타이머 확인 ─────────────────────
     await playerPage.bringToFront();
-    await expect(playerPage.getByText('결정까지')).toBeVisible({ timeout: 15_000 });
+    await expect(playerPage.getByText('결정까지')).toBeVisible({ timeout: CROSS_TAB_TIMEOUT });
 
     // ── 20. 전투와 세션 종료 ──────────────────────────────────
     await dmPage.bringToFront();

@@ -146,6 +146,29 @@ async function currentUserId(): Promise<UUID> {
   return data.user.id;
 }
 
+// ── 프로필 이미지 ────────────────────────────────────────────────────
+// Storage 정책(0004_storage.sql)과 같은 제한을 클라이언트에서도 확인한다.
+const AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const AVATAR_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+};
+
+/**
+ * 공개 URL에서 Storage 경로를 되돌린다. 이전 이미지를 지우는 데만 쓴다.
+ * 자기 폴더(`{userId}/`)로 시작하지 않으면 무시한다 — 남의 파일을 지우지 않기 위한 방어다.
+ */
+function avatarPathFromUrl(url: string | null, userId: UUID): string | null {
+  if (!url) return null;
+  const marker = '/storage/v1/object/public/avatars/';
+  const index = url.indexOf(marker);
+  if (index === -1) return null;
+  const path = decodeURIComponent(url.slice(index + marker.length).split('?')[0] ?? '');
+  return path.startsWith(`${userId}/`) ? path : null;
+}
+
 async function campaignIdOfSession(sessionId: UUID): Promise<UUID> {
   const row = unwrap(
     await sb().from('sessions').select('campaign_id').eq('id', sessionId).single(),
@@ -272,6 +295,53 @@ export function createSupabaseRepository(): Repository {
           '프로필을 저장하지 못했습니다.',
         );
         return data as Profile;
+      },
+      async uploadAvatar(file) {
+        const userId = await currentUserId();
+
+        // 확장자만 믿지 않는다. 서버 정책(Storage)도 같은 제한을 다시 검사한다.
+        if (!AVATAR_TYPES.includes(file.type)) {
+          throw new AppError('PNG, JPEG, WebP 이미지만 사용할 수 있습니다.', 'validation');
+        }
+        if (file.size > MAX_AVATAR_BYTES) {
+          throw new AppError('프로필 이미지는 2MB를 넘을 수 없습니다.', 'validation');
+        }
+
+        // 저장 이름을 무작위로 정한다. 원본 파일 이름은 저장하지 않는다.
+        const extension = AVATAR_EXTENSIONS[file.type] ?? 'png';
+        const path = `${userId}/${crypto.randomUUID()}.${extension}`;
+
+        const { error: uploadError } = await sb()
+          .storage.from('avatars')
+          .upload(path, file, { contentType: file.type, upsert: false });
+        if (uploadError) throw toAppError(uploadError, '프로필 이미지를 올리지 못했습니다.');
+
+        const { data: urlData } = sb().storage.from('avatars').getPublicUrl(path);
+
+        const previous = (await loadProfile(userId))?.avatar_url ?? null;
+        const profile = unwrap(
+          await sb().from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId).select().single(),
+          '프로필을 저장하지 못했습니다.',
+        ) as Profile;
+
+        // 이전 이미지는 정리한다. 실패해도 프로필 변경은 유효하다.
+        const stale = avatarPathFromUrl(previous, userId);
+        if (stale && stale !== path) {
+          await sb().storage.from('avatars').remove([stale]).catch(() => undefined);
+        }
+        return profile;
+      },
+      async removeAvatar() {
+        const userId = await currentUserId();
+        const previous = (await loadProfile(userId))?.avatar_url ?? null;
+        const profile = unwrap(
+          await sb().from('profiles').update({ avatar_url: null }).eq('id', userId).select().single(),
+          '프로필을 저장하지 못했습니다.',
+        ) as Profile;
+
+        const stale = avatarPathFromUrl(previous, userId);
+        if (stale) await sb().storage.from('avatars').remove([stale]).catch(() => undefined);
+        return profile;
       },
       async deleteAccount() {
         // 계정 삭제는 service_role 권한이 필요하므로 Edge Function으로 위임한다.

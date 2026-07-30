@@ -13,6 +13,7 @@ import { toast } from '@/components/ui/Toast';
 import { toUserMessage } from '@/lib/errors';
 import { isOwner } from '@/domain/permissions';
 import { CAMPAIGN_STATUSES, CAMPAIGN_STATUS_LABELS, type Campaign } from '@/data/types';
+import { THEME_COLOR_LABELS, THEME_COLORS } from './themeColor';
 import type { ImportPreview, ImportStrategy } from '@/data/repository';
 import { formatDateTime } from '@/lib/format';
 import { downloadJson } from '@/lib/download';
@@ -146,6 +147,30 @@ export function CampaignSettingsPage() {
             )}
           </Field>
         </div>
+
+        <fieldset>
+          <legend className="text-sm font-medium">강조 색상</legend>
+          <p className="mt-1 text-xs text-[var(--color-fg-muted)]">
+            이 캠페인에 들어와 있는 동안 앱의 강조 색이 바뀝니다. 여러 캠페인을 오갈 때 구분하기 쉬워집니다.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {THEME_COLORS.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-label={`강조 색상 ${THEME_COLOR_LABELS[color] ?? color}`}
+                aria-pressed={campaign.theme_color === color}
+                onClick={() => save({ theme_color: color })}
+                className="h-10 w-10 rounded-full border-2 transition-transform"
+                style={{
+                  backgroundColor: color,
+                  borderColor: campaign.theme_color === color ? 'var(--color-fg)' : 'transparent',
+                  transform: campaign.theme_color === color ? 'scale(1.1)' : undefined,
+                }}
+              />
+            ))}
+          </div>
+        </fieldset>
       </section>
 
       <section className="flex flex-col gap-3">

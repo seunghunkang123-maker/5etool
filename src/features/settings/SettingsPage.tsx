@@ -10,6 +10,7 @@ import { confirmAndRun } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { toUserMessage } from '@/lib/errors';
 import { SHORTCUT_HELP } from '@/hooks/useShortcuts';
+import { AvatarPicker } from './AvatarPicker';
 import type { Density, NotificationPrefs, ThemeMode } from '@/data/types';
 
 export function SettingsPage() {
@@ -49,6 +50,7 @@ export function SettingsPage() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold">프로필</h2>
+        <AvatarPicker />
         <Field label="표시 이름">
           {({ id }) => <Input id={id} value={displayName} onChange={(e) => setDisplayName(e.target.value)} />}
         </Field>

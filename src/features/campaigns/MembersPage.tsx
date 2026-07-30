@@ -6,6 +6,7 @@ import { repo } from '@/data';
 import { qk, useCampaign, useMembers, useViewer } from '@/hooks/queries';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, Input, Select } from '@/components/ui/Field';
+import { Avatar } from '@/components/ui/Avatar';
 import { Badge, CardListSkeleton, ErrorState } from '@/components/ui/feedback';
 import { confirmAndRun } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toast';
@@ -162,12 +163,7 @@ export function MembersPage() {
             <li key={member.user_id} className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span
-                    aria-hidden
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-accent)] font-semibold text-[var(--color-accent-fg)]"
-                  >
-                    {(member.profile?.display_name ?? '?').slice(0, 1)}
-                  </span>
+                  <Avatar url={member.profile?.avatar_url} name={member.profile?.display_name} size="lg" className="h-9 w-9 text-base" />
                   <div>
                     <p className="font-medium">{member.profile?.display_name ?? '알 수 없음'}</p>
                     <p className="text-xs text-[var(--color-fg-muted)]">{member.profile?.email}</p>

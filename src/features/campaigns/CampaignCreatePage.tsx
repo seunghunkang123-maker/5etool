@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { THEME_COLOR_LABELS, THEME_COLORS } from './themeColor';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -22,7 +23,6 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-const THEME_COLORS = ['#7c3aed', '#0f766e', '#b91c1c', '#1d4ed8', '#a16207', '#4d7c0f'];
 
 export function CampaignCreatePage() {
   const navigate = useNavigate();
@@ -111,7 +111,7 @@ export function CampaignCreatePage() {
               <button
                 key={color}
                 type="button"
-                aria-label={`테마 색상 ${color}`}
+                aria-label={`테마 색상 ${THEME_COLOR_LABELS[color] ?? color}`}
                 aria-pressed={themeColor === color}
                 onClick={() => setValue('theme_color', color)}
                 className="h-10 w-10 rounded-full border-2 transition-transform"

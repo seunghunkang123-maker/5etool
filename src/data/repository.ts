@@ -192,6 +192,12 @@ export interface Repository {
     updatePassword(newPassword: string): Promise<void>;
     resendVerification(): Promise<void>;
     updateProfile(patch: Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'locale'>>): Promise<Profile>;
+    /**
+     * 프로필 이미지를 올리고 프로필에 반영한다.
+     * 저장 파일 이름은 무작위로 정하고, 이전 이미지는 정리한다.
+     */
+    uploadAvatar(file: File): Promise<Profile>;
+    removeAvatar(): Promise<Profile>;
     deleteAccount(): Promise<void>;
     getPreferences(): Promise<UserPreferences>;
     savePreferences(patch: Partial<UserPreferences>): Promise<UserPreferences>;

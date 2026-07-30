@@ -8,6 +8,8 @@ import { useUserRealtime } from '@/hooks/useRealtime';
 import { cn } from '@/lib/cn';
 import { isDemoMode } from '@/data';
 import { Logo } from '@/components/ui/Logo';
+import { Avatar } from '@/components/ui/Avatar';
+import { CampaignAccent } from '@/features/campaigns/CampaignAccent';
 
 /** 로그인 후 공통 레이아웃 (상단바 + 콘텐츠) */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -18,6 +20,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-[var(--color-surface)]">
+      <CampaignAccent />
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:bg-[var(--color-accent)] focus:px-3 focus:py-2 focus:text-[var(--color-accent-fg)]"
@@ -67,12 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 aria-haspopup="menu"
                 onClick={() => setMenuOpen((v) => !v)}
               >
-                <span
-                  aria-hidden
-                  className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-accent)] text-sm font-semibold text-[var(--color-accent-fg)]"
-                >
-                  {(profile?.display_name ?? '?').slice(0, 1)}
-                </span>
+                <Avatar url={profile?.avatar_url} name={profile?.display_name} size="md" />
               </Button>
 
               {menuOpen ? (

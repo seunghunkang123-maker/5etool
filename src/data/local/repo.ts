@@ -105,6 +105,16 @@ function assert(condition: boolean, message: string, code: AppError['code'] = 'f
   if (!condition) throw new AppError(message, code);
 }
 
+/** 데모 모드에는 파일 저장소가 없으므로 이미지를 data URL로 바꿔 보관한다. */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new AppError('이미지를 읽지 못했습니다.', 'validation'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function profileOf(userId: UUID): Profile | null {
   return db().profiles.find((p) => p.id === userId) ?? null;
 }
@@ -341,6 +351,32 @@ export function createLocalRepository(): Repository {
         if (patch.display_name !== undefined) profile.display_name = patch.display_name;
         if (patch.avatar_url !== undefined) profile.avatar_url = patch.avatar_url;
         if (patch.locale !== undefined) profile.locale = patch.locale;
+        localStore.commit(makeEvent('profiles', 'UPDATE', profile as unknown as Record<string, unknown>));
+        emitAuth();
+        return profile;
+      },
+      async uploadAvatar(file) {
+        const userId = requireUserId();
+        const profile = findOrThrow(db().profiles, (p) => p.id === userId, '프로필을 찾을 수 없습니다.');
+
+        // 운영 환경과 같은 제한을 적용한다. 확장자가 아니라 MIME type을 본다.
+        if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+          throw new AppError('PNG, JPEG, WebP 이미지만 사용할 수 있습니다.', 'validation');
+        }
+        if (file.size > 2 * 1024 * 1024) {
+          throw new AppError('프로필 이미지는 2MB를 넘을 수 없습니다.', 'validation');
+        }
+
+        // 데모 모드에는 저장소가 없으므로 data URL로 보관한다.
+        profile.avatar_url = await fileToDataUrl(file);
+        localStore.commit(makeEvent('profiles', 'UPDATE', profile as unknown as Record<string, unknown>));
+        emitAuth();
+        return profile;
+      },
+      async removeAvatar() {
+        const userId = requireUserId();
+        const profile = findOrThrow(db().profiles, (p) => p.id === userId, '프로필을 찾을 수 없습니다.');
+        profile.avatar_url = null;
         localStore.commit(makeEvent('profiles', 'UPDATE', profile as unknown as Record<string, unknown>));
         emitAuth();
         return profile;

@@ -22,6 +22,7 @@ import { InitiativeTracker } from './InitiativeTracker';
 import { SessionLogPanel } from './SessionLogPanel';
 import { PartyBoard } from './PartyBoard';
 import { CharacterSheet } from '@/features/characters/CharacterSheet';
+import { CampaignAccent } from '@/features/campaigns/CampaignAccent';
 import { SESSION_STATUS_LABELS } from '@/data/types';
 import { cn } from '@/lib/cn';
 
@@ -74,6 +75,7 @@ export function SessionPage() {
 
   return (
     <div className="flex h-dvh flex-col bg-[var(--color-surface-2)]">
+      <CampaignAccent />
       <SessionTopBar
         campaignName={campaign?.name ?? ''}
         sessionTitle={session.title}
