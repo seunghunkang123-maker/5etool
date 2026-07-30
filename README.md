@@ -1,4 +1,4 @@
-# Arcanum Table — TRPG 세션 운영 도구
+# 캠페인 도우미 — TRPG 세션 운영 도구
 
 던전 앤 드래곤 5판을 중심으로 한 **웹 기반 TRPG 세션 운영 애플리케이션**입니다.
 캐릭터 시트 도구가 아니라, **던전 마스터(DM)가 캠페인 자료·몬스터·NPC·전투·핸드아웃을 관리하고
@@ -244,7 +244,7 @@ Redirect URL(`https://<프로젝트>.vercel.app/**`)을 등록합니다.
 ```
 npm run typecheck   통과 (오류 0)
 npm run lint        통과 (경고 0)
-npm run test        19개 파일 / 243개 테스트 통과
+npm run test        21개 파일 / 259개 테스트 통과
 npm run build       통과 (코드 분할된 청크로 빌드)
 npm run test:e2e    1개 시나리오 통과 (DM·플레이어 2탭 전체 흐름, 약 30초)
 ./supabase/test/run_checks.sh

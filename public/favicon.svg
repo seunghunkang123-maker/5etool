@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="캠페인 도우미">
+  <title>캠페인 도우미</title>
+  <!-- 탭 배경이 밝든 어둡든 보이도록 색을 채운 바탕을 둔다 -->
+  <rect width="32" height="32" rx="7" fill="#6d3fd4"/>
+  <g fill="none" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 20면체 외곽 (src/components/ui/Logo.tsx와 같은 도형) -->
+    <path d="M16 5.2 27 11.4v9.2L16 26.8 5 20.6v-9.2Z"/>
+    <!-- 위쪽 삼각면 -->
+    <path d="M16 10.6 22.3 21H9.7Z"/>
+  </g>
+</svg>

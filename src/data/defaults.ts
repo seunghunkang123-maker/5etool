@@ -157,8 +157,13 @@ export function normalizeSheet(value: unknown): CharacterSheetExtra {
   };
 }
 
-/** 저장소에서 읽은 캐릭터를 화면이 안전하게 쓸 수 있는 형태로 보정한다. */
-export function normalizeCharacter<T extends { sheet?: unknown }>(row: T): T {
+/**
+ * 저장소에서 읽은 캐릭터를 화면이 안전하게 쓸 수 있는 형태로 보정한다.
+ * 반환 타입에서 sheet를 CharacterSheetExtra로 좁혀, 호출한 쪽이 항목 존재를 보장받게 한다.
+ */
+export function normalizeCharacter<T extends { sheet?: unknown }>(
+  row: T,
+): Omit<T, 'sheet'> & { sheet: CharacterSheetExtra } {
   return { ...row, sheet: normalizeSheet(row.sheet) };
 }
 

@@ -1,12 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Settings, Shield, Swords } from 'lucide-react';
+import { LayoutDashboard, LogOut, Settings, Shield } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { Button } from '@/components/ui/Button';
 import { NotificationBell } from '@/features/notifications/NotificationBell';
 import { useUserRealtime } from '@/hooks/useRealtime';
 import { cn } from '@/lib/cn';
 import { isDemoMode } from '@/data';
+import { Logo } from '@/components/ui/Logo';
 
 /** 로그인 후 공통 레이아웃 (상단바 + 콘텐츠) */
 export function AppShell({ children }: { children: ReactNode }) {
@@ -27,8 +28,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-[var(--color-border)] bg-[var(--color-surface)]/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-3 sm:px-5">
           <Link to="/" className="flex items-center gap-2 font-semibold text-[var(--color-fg)]">
-            <Swords aria-hidden className="h-5 w-5 text-[var(--color-accent)]" />
-            <span>Arcanum Table</span>
+            <Logo className="h-5 w-5 text-[var(--color-accent)]" />
+            <span>캠페인 도우미</span>
           </Link>
 
           {isDemoMode ? (

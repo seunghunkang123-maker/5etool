@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Swords } from 'lucide-react';
 import { isDemoMode } from '@/data';
+import { Logo } from '@/components/ui/Logo';
 
 export function AuthLayout({ title, description, children, footer }: { title: string; description?: string; children: ReactNode; footer?: ReactNode }) {
   return (
@@ -8,9 +8,9 @@ export function AuthLayout({ title, description, children, footer }: { title: st
       <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--color-accent)]">
-            <Swords aria-hidden className="h-6 w-6 text-[var(--color-accent-fg)]" />
+            <Logo className="h-6 w-6 text-[var(--color-accent-fg)]" />
           </span>
-          <h1 className="text-xl font-semibold text-[var(--color-fg)]">Arcanum Table</h1>
+          <h1 className="text-xl font-semibold text-[var(--color-fg)]">캠페인 도우미</h1>
           <p className="text-sm text-[var(--color-fg-muted)]">D&amp;D 5e를 위한 TRPG 세션 운영 도구</p>
         </div>
 
