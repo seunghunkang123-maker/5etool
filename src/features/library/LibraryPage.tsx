@@ -30,6 +30,7 @@ import { FolderTree } from './FolderTree';
 import { RevealDialog } from './RevealControl';
 import { CardEditor } from './CardEditor';
 import { CreateCardDialog } from './CreateCardDialog';
+import { TagManagerDialog } from './TagManagerDialog';
 import { ConditionReferenceDialog } from '@/features/conditions/ConditionReferenceDialog';
 import { useConditionReference } from '@/stores/conditionReference';
 import { cn } from '@/lib/cn';
@@ -54,6 +55,7 @@ export function LibraryPage() {
   const [editing, setEditing] = useState<Card | null>(null);
   const [revealing, setRevealing] = useState<Card | null>(null);
   const [creating, setCreating] = useState(false);
+  const [managingTags, setManagingTags] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [folderDialog, setFolderDialog] = useState<{ mode: 'create' | 'rename'; parentId: UUID | null; folder?: Folder } | null>(null);
 
@@ -180,9 +182,21 @@ export function LibraryPage() {
             onDelete={deleteFolder}
           />
 
-          {tags.length > 0 ? (
-            <div className="mt-5">
-              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">태그</h2>
+          {/* 태그가 하나도 없어도 만들 수 있어야 하므로 머리글은 항상 보여 준다. */}
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-fg-muted)]">태그</h2>
+              {canEdit ? (
+                <Button size="sm" variant="ghost" onClick={() => setManagingTags(true)}>
+                  관리
+                </Button>
+              ) : null}
+            </div>
+            {tags.length === 0 ? (
+              <p className="text-xs text-[var(--color-fg-muted)]">
+                {canEdit ? '"관리"에서 태그를 만들 수 있습니다.' : '아직 태그가 없습니다.'}
+              </p>
+            ) : (
               <div className="flex flex-wrap gap-1.5">
                 {tags.map((tag) => {
                   const active = tagFilter.includes(tag.id);
@@ -203,8 +217,8 @@ export function LibraryPage() {
                   );
                 })}
               </div>
-            </div>
-          ) : null}
+            )}
+          </div>
         </aside>
 
         <div className="min-w-0 flex-1">
@@ -417,6 +431,8 @@ export function LibraryPage() {
           }}
         />
       ) : null}
+
+      {managingTags ? <TagManagerDialog campaignId={campaignId} onClose={() => setManagingTags(false)} /> : null}
 
       {generating ? (
         <Suspense fallback={null}>

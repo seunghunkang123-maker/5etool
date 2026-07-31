@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, Check, CloudOff, Loader2, Plus, Save, Trash2, TriangleAlert } from 'lucide-react';
 import { repo } from '@/data';
@@ -71,7 +71,15 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
   const [tab, setTab] = useState<'basic' | 'stats' | 'actions' | 'dm'>('basic');
   const [state, setState] = useState<EditorState>(() => toState(card));
   const [conflict, setConflict] = useState<Card | null>(null);
-  const [version, setVersion] = useState(card.version);
+  // 버전은 상태가 아니라 참조로 들고 있는다.
+  // 상태로 두면 자동 저장 함수가 만들어질 때의 값을 붙잡고 있다가
+  // 저장 응답이 늦어질 때 옛 버전을 보내 낙관적 잠금에 잘못 걸린다.
+  const versionRef = useRef(card.version);
+  const setVersion = (next: number) => {
+    versionRef.current = next;
+  };
+  // 마지막으로 서버에 올린 내용. 충돌이 났을 때 "남이 고쳤는지"를 가리는 기준이 된다.
+  const lastSavedRef = useRef<EditorState>(toState(card));
 
   // 저장되지 않은 임시 저장본이 있으면 복구를 제안한다.
   const draft = useMemo(() => loadDraft<EditorState>(`card:${card.id}`), [card.id]);
@@ -81,32 +89,43 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
     draftKey: `card:${card.id}`,
     value: state,
     onSave: async (value) => {
-      try {
-        const saved = await repo().library.updateCard(
-          card.id,
-          {
-            name: value.name,
-            type: value.type,
-            summary: value.summary,
-            body: value.body,
-            image_url: value.image_url,
-            dm_notes: value.dm_notes,
-            tag_ids: value.tag_ids,
-            ...(value.stats ? { stats: value.stats as MonsterStats } : {}),
-            sections: value.sections.map((s, i) => ({ ...s, id: '', card_id: card.id, sort_order: i })),
-          },
-          version,
-        );
+      const patch = {
+        name: value.name,
+        type: value.type,
+        summary: value.summary,
+        body: value.body,
+        image_url: value.image_url,
+        dm_notes: value.dm_notes,
+        tag_ids: value.tag_ids,
+        ...(value.stats ? { stats: value.stats as MonsterStats } : {}),
+        sections: value.sections.map((s, i) => ({ ...s, id: '', card_id: card.id, sort_order: i })),
+      };
+
+      const write = async () => {
+        const saved = await repo().library.updateCard(card.id, patch, versionRef.current);
         setVersion(saved.version);
         await client.invalidateQueries({ queryKey: ['cards', campaignId] });
         void client.invalidateQueries({ queryKey: qk.card(card.id) });
+      };
+
+      try {
+        await write();
       } catch (error) {
-        if (isConflict(error)) {
-          const server = await repo().library.card(card.id);
-          setConflict(server);
+        if (!isConflict(error)) throw error;
+
+        // 버전이 어긋났다. 서버 내용이 내가 마지막으로 저장한 것과 같다면
+        // 다른 사람이 고친 것이 아니라 내 저장이 겹친 것이므로 조용히 맞추고 다시 보낸다.
+        const server = await repo().library.card(card.id);
+        if (JSON.stringify(toState(server)) === JSON.stringify(lastSavedRef.current)) {
+          setVersion(server.version);
+          await write();
+          lastSavedRef.current = value;
+          return;
         }
+        setConflict(server);
         throw error;
       }
+      lastSavedRef.current = value;
     },
   });
 

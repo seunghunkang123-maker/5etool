@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { repo } from '@/data';
 import { qk, useCampaign, useCharacters, useViewer } from '@/hooks/queries';
 import { Button } from '@/components/ui/Button';
 import { CardListSkeleton, EmptyState } from '@/components/ui/feedback';
 import { HpBar } from '@/components/ui/HpBar';
 import { toast } from '@/components/ui/Toast';
+import { confirmAndRun } from '@/components/ui/ConfirmDialog';
 import { toUserMessage } from '@/lib/errors';
-import { isDM } from '@/domain/permissions';
+import { isDM, isOwner } from '@/domain/permissions';
 import { projectCharacterForViewer } from '@/domain/reveal';
 import { CharacterSheet } from './CharacterSheet';
 import type { PlayerCharacter } from '@/data/types';
@@ -35,6 +36,29 @@ export function CharactersPage() {
     }
   };
 
+  /**
+   * 캐릭터 삭제.
+   * 본인 캐릭터이거나 캠페인 소유자만 지울 수 있다(서버 정책과 같은 조건).
+   * 시트와 자원이 함께 사라지고 되돌릴 수 없으므로 이름을 확인시킨다.
+   */
+  const remove = (character: PlayerCharacter) =>
+    void confirmAndRun(
+      {
+        title: `"${character.name}"을(를) 삭제할까요?`,
+        description: '능력치·자원·소지품이 함께 사라지며 되돌릴 수 없습니다. 진행 중인 전투에 올라가 있어도 전투 참가자는 남습니다.',
+        confirmLabel: '삭제',
+        danger: true,
+      },
+      async () => {
+        await repo().characters.remove(character.id);
+        await client.invalidateQueries({ queryKey: qk.characters(campaignId) });
+      },
+      '캐릭터를 삭제했습니다.',
+    );
+
+  /** 서버 정책과 같은 조건. 버튼을 감추는 것만으로 권한을 통제하지 않는다. */
+  const canDelete = (character: PlayerCharacter) => character.user_id === viewer?.userId || isOwner(viewer);
+
   if (isLoading) return <CardListSkeleton rows={3} />;
 
   return (
@@ -55,8 +79,8 @@ export function CharactersPage() {
         <EmptyState title="아직 캐릭터가 없습니다" description="캐릭터를 만들면 세션 중 HP와 자원을 직접 관리할 수 있습니다." action={{ label: '캐릭터 만들기', onClick: create }} />
       ) : (
         <>
-          <CharacterGrid title="내 캐릭터" characters={mine} onSelect={setEditing} campaignId={campaignId} viewerId={viewer?.userId} isDm={isDM(viewer)} partyVisibility={campaign?.party_visibility} />
-          <CharacterGrid title="파티" characters={others} onSelect={setEditing} campaignId={campaignId} viewerId={viewer?.userId} isDm={isDM(viewer)} partyVisibility={campaign?.party_visibility} />
+          <CharacterGrid title="내 캐릭터" characters={mine} onSelect={setEditing} campaignId={campaignId} viewerId={viewer?.userId} isDm={isDM(viewer)} partyVisibility={campaign?.party_visibility} onDelete={remove} canDelete={canDelete} />
+          <CharacterGrid title="파티" characters={others} onSelect={setEditing} campaignId={campaignId} viewerId={viewer?.userId} isDm={isDM(viewer)} partyVisibility={campaign?.party_visibility} onDelete={remove} canDelete={canDelete} />
         </>
       )}
 
@@ -81,6 +105,8 @@ function CharacterGrid({
   viewerId,
   isDm,
   partyVisibility,
+  onDelete,
+  canDelete,
 }: {
   title: string;
   characters: PlayerCharacter[];
@@ -89,6 +115,8 @@ function CharacterGrid({
   viewerId: string | undefined;
   isDm: boolean;
   partyVisibility: { hp_numbers: boolean; ac: boolean; class_level: boolean } | undefined;
+  onDelete: (character: PlayerCharacter) => void;
+  canDelete: (character: PlayerCharacter) => boolean;
 }) {
   if (characters.length === 0) return null;
   const visibility = partyVisibility ?? { hp_numbers: true, ac: true, class_level: true };
@@ -104,7 +132,18 @@ function CharacterGrid({
             visibility,
           );
           return (
-            <li key={character.id}>
+            <li key={character.id} className="relative">
+              {canDelete(character) ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`${character.name} 삭제`}
+                  onClick={() => onDelete(character)}
+                  className="absolute right-2 top-2 z-10"
+                >
+                  <Trash2 aria-hidden className="h-4 w-4" />
+                </Button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => onSelect(character)}

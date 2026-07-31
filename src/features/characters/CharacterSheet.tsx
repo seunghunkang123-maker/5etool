@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BedDouble, Coffee, Heart, Plus, Trash2 } from 'lucide-react';
 import { repo } from '@/data';
@@ -22,7 +22,9 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
   const client = useQueryClient();
   const [state, setState] = useState<PlayerCharacter>(character);
   const [tab, setTab] = useState<'core' | 'abilities' | 'resources' | 'detail'>('core');
-  const [version, setVersion] = useState(character.version);
+  // 버전은 참조로 들고 있는다. 상태로 두면 저장 응답이 늦을 때 옛 버전을 보내
+  // 낙관적 잠금에 잘못 걸려 "다른 사용자가 먼저 내용을 수정했습니다"가 뜬다.
+  const versionRef = useRef(character.version);
   const [hpInput, setHpInput] = useState('');
 
   const { data: resources = [] } = useQuery({
@@ -64,9 +66,9 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
           sheet: value.sheet,
           share_settings: value.share_settings,
         },
-        version,
+        versionRef.current,
       );
-      setVersion(saved.version);
+      versionRef.current = saved.version;
       void client.invalidateQueries({ queryKey: qk.characters(campaignId) });
     },
   });
@@ -99,7 +101,7 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
       await repo().characters.rest(character.id, kind);
       const refreshed = await repo().characters.get(character.id);
       setState(refreshed);
-      setVersion(refreshed.version);
+      versionRef.current = refreshed.version;
       void client.invalidateQueries({ queryKey: qk.resources(character.id) });
       toast.success(kind === 'long' ? '긴 휴식을 마쳤습니다.' : '짧은 휴식을 마쳤습니다.');
     } catch (error) {

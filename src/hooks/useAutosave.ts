@@ -67,6 +67,11 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
   const lastSaved = useRef<string>(JSON.stringify(value));
   const valueRef = useRef(value);
   valueRef.current = value;
+  // 저장을 한 번에 하나만 보낸다.
+  // 두 저장이 겹치면 둘 다 같은 버전 번호를 들고 나가서, 나중 것이 낙관적 잠금에
+  // 걸려 "다른 사용자가 먼저 내용을 수정했습니다"로 잘못 보고된다.
+  const inFlight = useRef(false);
+  const queued = useRef(false);
 
   const persistDraft = useCallback(
     (next: T) => {
@@ -79,15 +84,25 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
     [draftKey],
   );
 
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+
   const runSave = useCallback(async () => {
+    // 이미 저장 중이면 새로 보내지 않고, 끝난 뒤 한 번 더 돌도록 표시만 한다.
+    if (inFlight.current) {
+      queued.current = true;
+      return;
+    }
+
     const snapshot = valueRef.current;
     const serialized = JSON.stringify(snapshot);
     if (serialized === lastSaved.current) return;
 
+    inFlight.current = true;
     setStatus('saving');
     setError(null);
     try {
-      await onSave(snapshot);
+      await onSaveRef.current(snapshot);
       lastSaved.current = serialized;
       clearDraft(draftKey);
       setStatus('saved');
@@ -95,8 +110,23 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
       persistDraft(snapshot);
       setError(toUserMessage(err));
       setStatus(navigator.onLine === false ? 'offline' : 'error');
+      // 실패했으면 밀린 저장을 자동으로 다시 보내지 않는다.
+      // 같은 오류를 반복해서 띄우기만 하기 때문이다.
+      queued.current = false;
+    } finally {
+      inFlight.current = false;
     }
-  }, [onSave, draftKey, persistDraft]);
+
+    // 저장하는 동안 값이 또 바뀌었으면 이어서 한 번 더 저장한다.
+    if (queued.current) {
+      queued.current = false;
+      if (JSON.stringify(valueRef.current) !== lastSaved.current) await runSaveRef.current();
+    }
+  }, [draftKey, persistDraft]);
+
+  // runSave가 자기 자신을 다시 부를 수 있게 참조로 들고 있는다.
+  const runSaveRef = useRef(runSave);
+  runSaveRef.current = runSave;
 
   useEffect(() => {
     if (!enabled) return;
@@ -116,8 +146,6 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
 
   // 화면을 닫을 때 아직 저장되지 않은 변경이 있으면 즉시 저장한다.
   // (debounce 타이머가 언마운트로 취소되어 변경이 사라지는 것을 막는다.)
-  const runSaveRef = useRef(runSave);
-  runSaveRef.current = runSave;
   useEffect(() => {
     return () => {
       if (JSON.stringify(valueRef.current) !== lastSaved.current) {

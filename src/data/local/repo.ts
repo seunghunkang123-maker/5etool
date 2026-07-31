@@ -1511,7 +1511,13 @@ export function createLocalRepository(): Repository {
         const data = db();
         data.characters = data.characters.filter((c) => c.id !== id);
         data.resources = data.resources.filter((r) => r.character_id !== id);
+        // 데이터베이스의 on delete set null과 같게 맞춘다.
+        // 전투 중이라면 참가자는 그대로 두고 캐릭터 연결만 끊는다.
+        for (const combatant of data.combatants) {
+          if (combatant.character_id === id) combatant.character_id = null;
+        }
         localStore.commit(makeEvent('player_characters', 'DELETE', null, { id }));
+        localStore.commit(makeEvent('encounter_combatants', 'UPDATE', null));
       },
       async resources(characterId) {
         return db()
