@@ -528,6 +528,25 @@ export const DURATION_MODE_LABELS: Record<DurationMode, string> = {
   manual: '수동 해제까지',
 };
 
+/**
+ * 상태 효과 라이브러리 항목.
+ * campaign_id가 null이면 모든 캠페인이 공유하는 시스템 기본 상태다.
+ * 캠페인 전용 상태는 DM이 직접 만들고 수정할 수 있다.
+ */
+export interface Condition {
+  id: UUID;
+  campaign_id: UUID | null;
+  key: string;
+  name: string;
+  icon: string;
+  description: string;
+  /** 누적되는 상태인지 (예: 출혈 3) */
+  is_stackable: boolean;
+  /** 배지 색. `#rrggbb` 형식만 허용한다. */
+  color: string | null;
+  sort_order: number;
+}
+
 export interface CombatantCondition {
   id: UUID;
   combatant_id: UUID;
@@ -535,6 +554,8 @@ export interface CombatantCondition {
   custom_name: string | null;
   icon: string;
   description: string;
+  /** 누적 수치. 스택을 쓰지 않는 상태는 1로 둔다. */
+  stacks: number;
   started_round: number;
   duration_mode: DurationMode;
   duration_rounds: number | null;

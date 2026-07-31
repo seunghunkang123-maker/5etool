@@ -11,6 +11,7 @@ import type {
   CharacterResource,
   Combatant,
   CombatantCondition,
+  Condition,
   DiceRoll,
   DiceVisibility,
   Encounter,
@@ -149,6 +150,19 @@ export interface ConditionInput {
   source_combatant_id?: UUID | null;
   linked_concentration?: boolean;
   is_public?: boolean;
+  /** 누적 수치. 생략하면 1. */
+  stacks?: number;
+}
+
+/** 캠페인 전용 상태 효과를 만들거나 고칠 때 쓰는 입력. */
+export interface ConditionTemplateInput {
+  key?: string;
+  name: string;
+  icon?: string;
+  description?: string;
+  is_stackable?: boolean;
+  color?: string | null;
+  sort_order?: number;
 }
 
 export interface DamageInput {
@@ -306,6 +320,13 @@ export interface Repository {
     setRound(encounterId: UUID, round: number): Promise<Encounter>;
     addCondition(combatantId: UUID, input: ConditionInput): Promise<CombatantCondition>;
     removeCondition(id: UUID): Promise<void>;
+    /** 적용된 상태의 스택을 바꾼다. 0 이하가 되면 상태를 제거한다. */
+    setConditionStacks(id: UUID, stacks: number): Promise<CombatantCondition | null>;
+
+    /** 상태 효과 라이브러리 — 시스템 기본 + 이 캠페인 전용. 구성원이면 누구나 읽는다. */
+    conditionLibrary(campaignId: UUID): Promise<Condition[]>;
+    saveConditionTemplate(campaignId: UUID, input: ConditionTemplateInput & { id?: UUID }): Promise<Condition>;
+    deleteConditionTemplate(id: UUID): Promise<void>;
     setConcentration(combatantId: UUID, on: boolean, note?: string): Promise<Combatant>;
   };
 

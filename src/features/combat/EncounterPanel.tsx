@@ -29,6 +29,7 @@ import { applyDamage, hpTier } from '@/domain/hp';
 import { evaluateConcentration } from '@/domain/concentration';
 import { turnOrder } from '@/domain/initiative';
 import { describeDuration, expiredOnTurnChange } from '@/domain/conditions';
+import { ConditionBadge } from '@/features/conditions/ConditionBadge';
 import type { Combatant, Encounter } from '@/data/types';
 import { AddCombatantDialog } from './AddCombatantDialog';
 import { ConditionDialog } from './ConditionDialog';
@@ -264,6 +265,7 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
 
       {conditionTarget ? (
         <ConditionDialog
+          campaignId={campaignId}
           combatant={conditionTarget}
           combatants={combatants}
           onClose={() => setConditionTarget(null)}
@@ -433,19 +435,49 @@ function CombatantRow({
       {(combatant.conditions ?? []).length > 0 ? (
         <ul className="mt-2 flex flex-wrap gap-1">
           {(combatant.conditions ?? []).map((condition) => (
-            <li key={condition.id}>
+            <li
+              key={condition.id}
+              className="flex items-center gap-0.5 rounded-full bg-[var(--color-surface-3)] pr-1"
+              title={`${condition.description} — ${describeDuration(condition, encounter.round)}`}
+            >
+              <ConditionBadge
+                conditionKey={condition.condition_key}
+                name={condition.custom_name ?? condition.condition_key}
+                stacks={condition.stacks}
+                className="bg-transparent hover:bg-transparent"
+              />
+              {!condition.is_public ? <EyeOff aria-label="비공개" className="h-3 w-3 text-[var(--color-fg-muted)]" /> : null}
+              <button
+                type="button"
+                onClick={async () => {
+                  await repo().combat.setConditionStacks(condition.id, condition.stacks - 1);
+                  onChanged();
+                }}
+                aria-label={`${condition.custom_name} 스택 1 줄이기`}
+                className="rounded px-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await repo().combat.setConditionStacks(condition.id, condition.stacks + 1);
+                  onChanged();
+                }}
+                aria-label={`${condition.custom_name} 스택 1 늘리기`}
+                className="rounded px-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
+              >
+                +
+              </button>
               <button
                 type="button"
                 onClick={async () => {
                   await repo().combat.removeCondition(condition.id);
                   onChanged();
                 }}
-                className="flex items-center gap-1 rounded-full bg-[var(--color-surface-3)] px-2 py-0.5 text-xs"
                 aria-label={`${condition.custom_name} 해제`}
-                title={`${condition.description} — ${describeDuration(condition, encounter.round)}`}
+                className="rounded px-0.5 text-[var(--color-fg-muted)] hover:text-[var(--color-danger)]"
               >
-                {condition.custom_name}
-                {!condition.is_public ? <EyeOff aria-label="비공개" className="h-3 w-3" /> : null}
                 <X aria-hidden className="h-3 w-3" />
               </button>
             </li>
@@ -488,7 +520,7 @@ function CombatantRow({
         ) : null}
 
         <div className="ml-auto flex gap-1">
-          <Button size="sm" variant="ghost" onClick={onAddCondition}>
+          <Button size="sm" variant="ghost" aria-label={`${combatant.name} 상태 추가`} onClick={onAddCondition}>
             상태 추가
           </Button>
           <Button

@@ -268,4 +268,87 @@ describe('데모 저장소 어댑터', () => {
       expect(cards.every((card) => card.reveal_scope === 'hidden')).toBe(true);
     });
   });
+  describe('상태 효과 라이브러리와 스택', () => {
+    it('시스템 기본 상태를 누구나 조회할 수 있다', async () => {
+      const campaign = await signUpDM();
+      const library = await repo().combat.conditionLibrary(campaign.id);
+      expect(library.length).toBeGreaterThan(10);
+      expect(library.some((c) => c.key === 'prone')).toBe(true);
+      // 시스템 기본은 캠페인에 속하지 않는다.
+      expect(library.find((c) => c.key === 'prone')?.campaign_id).toBeNull();
+    });
+
+    it('DM이 캠페인 전용 상태를 추가하면 플레이어도 볼 수 있다', async () => {
+      const campaign = await signUpDM();
+      await repo().combat.saveConditionTemplate(campaign.id, {
+        name: '출혈',
+        description: '턴 시작 시 스택만큼 피해.\n턴 끝에 1 감소.',
+        is_stackable: true,
+      });
+
+      const { dmId } = await addPlayer(campaign.join_code);
+      const asPlayer = await repo().combat.conditionLibrary(campaign.id);
+      const bleed = asPlayer.find((c) => c.key === '출혈');
+      expect(bleed?.is_stackable).toBe(true);
+      expect(bleed?.description).toContain('턴 끝에 1 감소');
+
+      loginAs(dmId);
+    });
+
+    it('플레이어는 상태를 추가하거나 지울 수 없다', async () => {
+      const campaign = await signUpDM();
+      const created = await repo().combat.saveConditionTemplate(campaign.id, { name: '파열' });
+      await addPlayer(campaign.join_code);
+
+      await expect(repo().combat.saveConditionTemplate(campaign.id, { name: '몰래추가' })).rejects.toThrow(AppError);
+      await expect(repo().combat.deleteConditionTemplate(created.id)).rejects.toThrow(AppError);
+    });
+
+    it('시스템 기본 상태는 삭제할 수 없다', async () => {
+      const campaign = await signUpDM();
+      const library = await repo().combat.conditionLibrary(campaign.id);
+      const prone = library.find((c) => c.key === 'prone');
+      await expect(repo().combat.deleteConditionTemplate(prone!.id)).rejects.toThrow(/찾을 수 없습니다|삭제할 수 없습니다/);
+    });
+
+    it('같은 상태를 다시 적용하면 스택이 쌓인다', async () => {
+      const campaign = await signUpDM();
+      const session = await repo().sessions.create(campaign.id, { title: '스택 세션' });
+      await repo().sessions.start(session.id);
+      const encounter = await repo().combat.createEncounter(session.id, '전투');
+      const [combatant] = await repo().combat.addCombatant(encounter.id, {
+        source_type: 'monster', name: '보스', hp: 50, max_hp: 50, ac: 15,
+      });
+      if (!combatant) throw new Error('참가자 생성 실패');
+
+      await repo().combat.addCondition(combatant.id, { condition_key: '출혈', duration_mode: 'manual' });
+      await repo().combat.addCondition(combatant.id, { condition_key: '출혈', duration_mode: 'manual', stacks: 2 });
+
+      const list = await repo().combat.combatants(encounter.id);
+      const conditions = list[0]?.conditions ?? [];
+      expect(conditions).toHaveLength(1);
+      expect(conditions[0]?.stacks).toBe(3);
+    });
+
+    it('스택을 0으로 만들면 상태가 사라진다', async () => {
+      const campaign = await signUpDM();
+      const session = await repo().sessions.create(campaign.id, { title: '스택 세션' });
+      await repo().sessions.start(session.id);
+      const encounter = await repo().combat.createEncounter(session.id, '전투');
+      const [combatant] = await repo().combat.addCombatant(encounter.id, {
+        source_type: 'monster', name: '보스', hp: 50, max_hp: 50, ac: 15,
+      });
+      if (!combatant) throw new Error('참가자 생성 실패');
+      const applied = await repo().combat.addCondition(combatant.id, { condition_key: '출혈', duration_mode: 'manual', stacks: 2 });
+
+      const after = await repo().combat.setConditionStacks(applied.id, 1);
+      expect(after?.stacks).toBe(1);
+
+      const gone = await repo().combat.setConditionStacks(applied.id, 0);
+      expect(gone).toBeNull();
+
+      const list = await repo().combat.combatants(encounter.id);
+      expect(list[0]?.conditions ?? []).toHaveLength(0);
+    });
+  });
 });

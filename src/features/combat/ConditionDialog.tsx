@@ -1,23 +1,35 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { repo } from '@/data';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, Input, Select } from '@/components/ui/Field';
-import { DND5E_CONDITIONS } from '@/domain/conditions';
+import { toEntries } from '@/domain/conditionLibrary';
 import { DURATION_MODES, DURATION_MODE_LABELS, type Combatant, type DurationMode } from '@/data/types';
 import type { ConditionInput } from '@/data/repository';
 
 export function ConditionDialog({
+  campaignId,
   combatant,
   combatants,
   onClose,
   onSubmit,
 }: {
+  campaignId: string;
   combatant: Combatant;
   combatants: Combatant[];
   onClose: () => void;
   onSubmit: (input: ConditionInput) => Promise<void>;
 }) {
-  const [conditionKey, setConditionKey] = useState(DND5E_CONDITIONS[0]?.key ?? 'blinded');
+  // 시스템 기본 + 캠페인 전용 상태를 모두 고를 수 있어야 한다.
+  const { data: library = [] } = useQuery({
+    queryKey: ['condition-library', campaignId],
+    queryFn: () => repo().combat.conditionLibrary(campaignId),
+    staleTime: 60_000,
+  });
+  const entries = useMemo(() => toEntries(library), [library]);
+
+  const [conditionKey, setConditionKey] = useState('');
   const [customName, setCustomName] = useState('');
   const [durationMode, setDurationMode] = useState<DurationMode>('manual');
   const [rounds, setRounds] = useState(1);
@@ -26,12 +38,19 @@ export function ConditionDialog({
   const [isPublic, setIsPublic] = useState(true);
   const [busy, setBusy] = useState(false);
 
+  const effectiveKey = conditionKey || entries[0]?.key || '';
+  const selected = entries.find((entry) => entry.key === effectiveKey) ?? null;
+
   const submit = async () => {
     setBusy(true);
     try {
+      const isCustom = effectiveKey === '__custom__';
       await onSubmit({
-        condition_key: conditionKey === '__custom__' ? 'custom' : conditionKey,
-        custom_name: conditionKey === '__custom__' ? customName.trim() || '사용자 정의 상태' : null,
+        condition_key: isCustom ? (customName.trim() || '사용자 정의 상태') : effectiveKey,
+        custom_name: isCustom ? customName.trim() || '사용자 정의 상태' : (selected?.name ?? null),
+        icon: selected?.icon,
+        description: selected ? [selected.summary, ...selected.details].filter(Boolean).join('\n') : undefined,
+        stacks: 1,
         duration_mode: durationMode,
         duration_rounds: durationMode === 'rounds' ? rounds : null,
         source_combatant_id: sourceId || null,
@@ -63,10 +82,10 @@ export function ConditionDialog({
       <div className="flex flex-col gap-4">
         <Field label="상태 효과">
           {({ id }) => (
-            <Select id={id} value={conditionKey} onChange={(e) => setConditionKey(e.target.value)} autoFocus>
-              {DND5E_CONDITIONS.map((condition) => (
-                <option key={condition.key} value={condition.key}>
-                  {condition.name}
+            <Select id={id} value={effectiveKey} onChange={(e) => setConditionKey(e.target.value)} autoFocus>
+              {entries.map((entry) => (
+                <option key={entry.key} value={entry.key}>
+                  {entry.isCustom ? `★ ${entry.name}` : entry.name}
                 </option>
               ))}
               <option value="__custom__">사용자 정의…</option>
@@ -74,13 +93,14 @@ export function ConditionDialog({
           )}
         </Field>
 
-        {conditionKey === '__custom__' ? (
+        {effectiveKey === '__custom__' ? (
           <Field label="상태 이름" required>
             {({ id }) => <Input id={id} value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="예: 표식" />}
           </Field>
         ) : (
           <p className="rounded-lg bg-[var(--color-surface-2)] p-2.5 text-xs text-[var(--color-fg-muted)]">
-            {DND5E_CONDITIONS.find((c) => c.key === conditionKey)?.description}
+            {selected?.summary || '설명이 없습니다.'}
+            {selected?.isStackable ? ' (누적되는 상태)' : ''}
           </p>
         )}
 

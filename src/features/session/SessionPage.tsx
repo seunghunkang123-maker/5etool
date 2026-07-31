@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Dices, LogOut, Maximize, Shield, Swords, Timer as TimerIcon, User, Users, Wifi, WifiOff } from 'lucide-react';
+import { Dices, LogOut, Maximize, Shield, Swords, Timer as TimerIcon, User, Users, Wifi, WifiOff } from 'lucide-react';
 import { repo } from '@/data';
 import { qk, useCampaign, useCharacters, useEncounter, useGameSession, useViewer } from '@/hooks/queries';
 import { useConnectionStatus, useSessionRealtime, useUserRealtime } from '@/hooks/useRealtime';
@@ -23,6 +23,9 @@ import { SessionLogPanel } from './SessionLogPanel';
 import { PartyBoard } from './PartyBoard';
 import { CharacterSheet } from '@/features/characters/CharacterSheet';
 import { CampaignAccent } from '@/features/campaigns/CampaignAccent';
+import { ConditionReferenceDialog } from '@/features/conditions/ConditionReferenceDialog';
+import { useConditionReference } from '@/stores/conditionReference';
+import { BookOpen } from 'lucide-react';
 import { SESSION_STATUS_LABELS } from '@/data/types';
 import { cn } from '@/lib/cn';
 
@@ -76,6 +79,7 @@ export function SessionPage() {
   return (
     <div className="flex h-dvh flex-col bg-[var(--color-surface-2)]">
       <CampaignAccent />
+      <ConditionReferenceDialog campaignId={campaignId} />
       <SessionTopBar
         campaignName={campaign?.name ?? ''}
         sessionTitle={session.title}
@@ -158,6 +162,15 @@ function SessionTopBar({
       </span>
 
       <div className="ml-auto flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="상태 효과 도감 열기"
+          onClick={() => useConditionReference.getState().show()}
+        >
+          <BookOpen aria-hidden className="h-4 w-4" />
+          <span className="hidden sm:inline">상태 도감</span>
+        </Button>
         <Button variant="ghost" size="icon" aria-label="전체 화면" onClick={toggleFullscreen} className="hidden sm:inline-flex">
           <Maximize aria-hidden className="h-4 w-4" />
         </Button>

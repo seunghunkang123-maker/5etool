@@ -158,7 +158,8 @@ test.describe('던전 마스터와 플레이어의 전체 세션 흐름', () => 
 
     // ── 15. 상태 효과 적용 ────────────────────────────────────
     await dmPage.bringToFront();
-    await dmPage.getByRole('button', { name: '상태 추가', exact: true }).first().click();
+    // 버튼은 참가자마다 있으므로 이름으로 구분한다.
+    await dmPage.getByRole('button', { name: '서리 고블린 상태 추가', exact: true }).click();
     await expect(dmPage.getByRole('dialog', { name: /상태 효과 적용/ })).toBeVisible();
     await dmPage.getByRole('combobox', { name: '상태 효과' }).selectOption('poisoned');
     await dmPage.getByRole('button', { name: '적용', exact: true }).click();

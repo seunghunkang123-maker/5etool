@@ -10,6 +10,7 @@ import type {
   CharacterResource,
   Combatant,
   CombatantCondition,
+  Condition,
   DeletedItem,
   DiceRoll,
   Encounter,
@@ -69,6 +70,8 @@ export interface LocalDB {
   encounters: Encounter[];
   combatants: Combatant[];
   conditions: CombatantCondition[];
+  /** 캠페인 전용 상태 효과 라이브러리 */
+  conditionLibrary: Condition[];
   timers: Timer[];
   diceRolls: DiceRoll[];
   notifications: AppNotification[];
@@ -100,6 +103,7 @@ export function emptyDB(): LocalDB {
     encounters: [],
     combatants: [],
     conditions: [],
+    conditionLibrary: [],
     timers: [],
     diceRolls: [],
     notifications: [],

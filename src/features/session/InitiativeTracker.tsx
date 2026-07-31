@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Sparkles, Swords } from 'lucide-react';
 import { useCharacters, useCombatants, useEncounter, useViewer } from '@/hooks/queries';
 import { Badge } from '@/components/ui/feedback';
+import { ConditionBadge } from '@/features/conditions/ConditionBadge';
 import { HpBar } from '@/components/ui/HpBar';
 import { turnOrder } from '@/domain/initiative';
 import { projectCombatantForViewer } from '@/domain/reveal';
@@ -102,9 +103,13 @@ export function InitiativeTracker({ sessionId, campaignId, campaign }: { session
                   {active ? <Badge tone="accent">현재 차례</Badge> : null}
                 </p>
                 {combatant.conditions.length > 0 ? (
-                  <p className="truncate text-xs text-[var(--color-fg-muted)]">
-                    {combatant.conditions.map((c) => c.name).join(', ')}
-                  </p>
+                  <ul className="mt-0.5 flex flex-wrap gap-1">
+                    {combatant.conditions.map((c) => (
+                      <li key={c.id}>
+                        <ConditionBadge conditionKey={c.key} name={c.name} stacks={c.stacks} />
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
               </div>
               <div className="w-24 shrink-0">

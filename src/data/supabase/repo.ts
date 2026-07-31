@@ -22,6 +22,7 @@ import type {
   CharacterResource,
   Combatant,
   CombatantCondition,
+  Condition,
   DeletedItem,
   DiceRoll,
   Encounter,
@@ -1140,6 +1141,85 @@ export function createSupabaseRepository(): Repository {
       async removeCondition(id) {
         unwrapVoid(await sb().from('combatant_conditions').delete().eq('id', id), '상태 효과를 해제하지 못했습니다.');
       },
+      async setConditionStacks(id, stacks) {
+        const next = Math.min(999, Math.round(stacks));
+        if (next <= 0) {
+          unwrapVoid(await sb().from('combatant_conditions').delete().eq('id', id), '상태 효과를 해제하지 못했습니다.');
+          return null;
+        }
+        const data = unwrap(
+          await sb().from('combatant_conditions').update({ stacks: next }).eq('id', id).select().single(),
+          '상태 효과를 변경하지 못했습니다.',
+        );
+        return data as CombatantCondition;
+      },
+
+      async conditionLibrary(campaignId) {
+        // 시스템 기본(campaign_id is null) + 이 캠페인 전용을 함께 가져온다.
+        // RLS가 구성원이 아닌 캠페인의 상태를 걸러 낸다.
+        const rows = unwrap(
+          await sb()
+            .from('conditions')
+            .select('*')
+            .or(`campaign_id.is.null,campaign_id.eq.${campaignId}`)
+            .order('campaign_id', { nullsFirst: true })
+            .order('sort_order'),
+          '상태 효과 목록을 불러오지 못했습니다.',
+        ) as Condition[];
+        return rows;
+      },
+
+      async saveConditionTemplate(campaignId, input) {
+        const name = input.name.trim();
+        if (!name) throw new AppError('상태 이름을 입력해 주세요.', 'validation');
+
+        if (input.id) {
+          const data = unwrap(
+            await sb()
+              .from('conditions')
+              .update({
+                name,
+                icon: input.icon,
+                description: input.description,
+                is_stackable: input.is_stackable,
+                color: input.color,
+                sort_order: input.sort_order,
+              })
+              .eq('id', input.id)
+              .eq('campaign_id', campaignId)
+              .select()
+              .single(),
+            '상태 효과를 저장하지 못했습니다.',
+          );
+          return data as Condition;
+        }
+
+        const key = (input.key ?? name).trim().toLowerCase().replace(/\s+/g, '-');
+        const data = unwrap(
+          await sb()
+            .from('conditions')
+            .insert({
+              campaign_id: campaignId,
+              key,
+              name,
+              icon: input.icon ?? 'sparkles',
+              description: input.description ?? '',
+              is_stackable: input.is_stackable ?? false,
+              color: input.color ?? null,
+              sort_order: input.sort_order ?? 0,
+            })
+            .select()
+            .single(),
+          '상태 효과를 만들지 못했습니다.',
+        );
+        return data as Condition;
+      },
+
+      async deleteConditionTemplate(id) {
+        // 시스템 기본 상태는 campaign_id가 null이라 RLS가 삭제를 막는다.
+        unwrapVoid(await sb().from('conditions').delete().eq('id', id), '상태 효과를 삭제하지 못했습니다.');
+      },
+
       async setConcentration(combatantId, on, note) {
         if (!on) {
           await sb().from('combatant_conditions').delete().eq('combatant_id', combatantId).eq('linked_concentration', true);

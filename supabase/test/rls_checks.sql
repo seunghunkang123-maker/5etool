@@ -581,6 +581,92 @@ end
 $$;
 select set_config('request.jwt.claim.sub', current_setting('test.dm'), false);
 
+-- ── 상태 효과 라이브러리 ────────────────────────────────────────────
+-- 플레이어도 조회는 할 수 있어야 한다(도감). 편집은 DM만 가능해야 한다.
+do $$
+declare
+  v_id uuid;
+begin
+  insert into public.conditions (campaign_id, key, name, description, is_stackable, color)
+  values (current_setting('test.campaign')::uuid, 'bleed', '출혈', '턴마다 피해.', true, '#b91c1c')
+  returning id into v_id;
+  perform set_config('test.condition', v_id::text, false);
+
+  if (select count(*) from public.conditions where campaign_id is null) = 0 then
+    raise exception '검사 실패: 시스템 기본 상태가 없습니다.';
+  end if;
+end
+$$;
+
+select set_config('request.jwt.claim.sub', current_setting('test.player'), false);
+do $$
+declare
+  v_rows integer;
+begin
+  -- 플레이어는 시스템 기본과 자기 캠페인 상태를 모두 읽을 수 있다.
+  select count(*) into v_rows from public.conditions
+   where campaign_id = current_setting('test.campaign')::uuid;
+  if v_rows <> 1 then
+    raise exception '검사 실패: 플레이어가 캠페인 상태를 읽지 못했습니다. (%)', v_rows;
+  end if;
+
+  select count(*) into v_rows from public.conditions where campaign_id is null;
+  if v_rows = 0 then
+    raise exception '검사 실패: 플레이어가 시스템 기본 상태를 읽지 못했습니다.';
+  end if;
+
+  -- 편집은 막혀야 한다.
+  begin
+    insert into public.conditions (campaign_id, key, name)
+    values (current_setting('test.campaign')::uuid, 'hack', '몰래추가');
+    raise exception '검사 실패: 플레이어가 상태를 추가할 수 있었습니다.';
+  exception when insufficient_privilege then
+    null;
+  end;
+
+  update public.conditions set name = '변조됨' where id = current_setting('test.condition')::uuid;
+  if (select name from public.conditions where id = current_setting('test.condition')::uuid) <> '출혈' then
+    raise exception '검사 실패: 플레이어가 상태 이름을 바꿀 수 있었습니다.';
+  end if;
+
+  delete from public.conditions where id = current_setting('test.condition')::uuid;
+  if (select count(*) from public.conditions where id = current_setting('test.condition')::uuid) <> 1 then
+    raise exception '검사 실패: 플레이어가 상태를 삭제할 수 있었습니다.';
+  end if;
+end
+$$;
+select set_config('request.jwt.claim.sub', current_setting('test.dm'), false);
+
+-- 시스템 기본 상태는 DM도 고칠 수 없다(모든 캠페인이 공유하기 때문).
+do $$
+declare
+  v_name text;
+begin
+  select name into v_name from public.conditions where campaign_id is null and key = 'prone';
+  update public.conditions set name = '변조됨' where campaign_id is null and key = 'prone';
+  if (select name from public.conditions where campaign_id is null and key = 'prone') <> v_name then
+    raise exception '검사 실패: 시스템 기본 상태가 수정되었습니다.';
+  end if;
+end
+$$;
+
+-- 스택 값의 범위 제약을 확인한다.
+do $$
+declare
+  v_ok boolean := false;
+begin
+  begin
+    insert into public.combatant_conditions (combatant_id, condition_key, stacks)
+    values (current_setting('test.combatant')::uuid, 'bleed', -1);
+  exception when check_violation then
+    v_ok := true;
+  end;
+  if not v_ok then
+    raise exception '검사 실패: 음수 스택이 저장되었습니다.';
+  end if;
+end
+$$;
+
 -- ── 다른 캠페인 격리 ────────────────────────────────────────────────
 do $$
 declare

@@ -49,6 +49,7 @@ supabase db push
 ```
 
 또는 대시보드 SQL Editor에서 `supabase/migrations/`의 파일을 번호 순서대로 실행합니다.
+마이그레이션은 여러 번 실행해도 안전하도록 작성했습니다(`if not exists` 등).
 
 적용 후 확인:
 

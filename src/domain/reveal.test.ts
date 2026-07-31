@@ -177,8 +177,10 @@ describe('projectCombatantForViewer', () => {
       dm_notes: '숨겨진 계획',
       sort_order: 0,
       conditions: [
-        { id: 'cc1', combatant_id: 'k1', condition_key: 'poisoned', custom_name: '중독', icon: 'flask', description: '', started_round: 1, duration_mode: 'manual', duration_rounds: null, source_combatant_id: null, linked_concentration: false, is_public: true, created_at: '2026-01-01T00:00:00.000Z' },
-        { id: 'cc2', combatant_id: 'k1', condition_key: 'secret', custom_name: '비밀 표식', icon: 'eye', description: '', started_round: 1, duration_mode: 'manual', duration_rounds: null, source_combatant_id: null, linked_concentration: false, is_public: false, created_at: '2026-01-01T00:00:00.000Z' },
+        { id: 'cc1', combatant_id: 'k1', condition_key: 'poisoned', custom_name: '중독', icon: 'flask', description: '', started_round: 1, duration_mode: 'manual', duration_rounds: null, source_combatant_id: null, linked_concentration: false,
+      stacks: 1, is_public: true, created_at: '2026-01-01T00:00:00.000Z' },
+        { id: 'cc2', combatant_id: 'k1', condition_key: 'secret', custom_name: '비밀 표식', icon: 'eye', description: '', started_round: 1, duration_mode: 'manual', duration_rounds: null, source_combatant_id: null, linked_concentration: false,
+      stacks: 1, is_public: false, created_at: '2026-01-01T00:00:00.000Z' },
       ],
       ...overrides,
     };

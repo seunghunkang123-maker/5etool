@@ -29,6 +29,7 @@ import type {
   CharacterResource,
   Combatant,
   CombatantCondition,
+  Condition,
   DeletedItem,
   DiceRoll,
   DiceVisibility,
@@ -64,7 +65,7 @@ import { applyDamage, applyHealing, setMaxHp, setTempHp } from '@/domain/hp';
 import { nextTurn, previousTurn, turnOrder, uniqueCombatantName } from '@/domain/initiative';
 import { rollExpression } from '@/domain/dice';
 import { generatedMonsterSchema, type GeneratedMonster, type MonsterPromptInput } from '@/domain/monsterSchema';
-import { CONDITION_MAP } from '@/domain/conditions';
+import { CONDITION_MAP, DND5E_CONDITIONS } from '@/domain/conditions';
 import { docToPlainText } from '@/domain/sanitize';
 
 /**
@@ -101,7 +102,7 @@ function viewerOf(campaignId: UUID): ViewerContext {
   return { userId, role: member.role, permissions: member.permissions ?? {} };
 }
 
-function assert(condition: boolean, message: string, code: AppError['code'] = 'forbidden'): void {
+function assert(condition: unknown, message: string, code: AppError['code'] = 'forbidden'): asserts condition {
   if (!condition) throw new AppError(message, code);
 }
 
@@ -1835,6 +1836,17 @@ export function createLocalRepository(): Repository {
         const encounter = findOrThrow(db().encounters, (e) => e.id === combatant.encounter_id, '전투를 찾을 수 없습니다.');
         assert(canManageCombat(viewerOf(encounter.campaign_id)), '상태 효과를 적용할 권한이 없습니다.');
         const template = CONDITION_MAP.get(input.condition_key);
+
+        // 이미 걸린 상태를 다시 적용하면 새로 만들지 않고 스택을 올린다.
+        const existing = db().conditions.find(
+          (c) => c.combatant_id === combatantId && c.condition_key === input.condition_key,
+        );
+        if (existing) {
+          existing.stacks = Math.min(999, existing.stacks + (input.stacks ?? 1));
+          localStore.commit(makeEvent('combatant_conditions', 'UPDATE', existing as unknown as Record<string, unknown>));
+          return snapshot(existing);
+        }
+
         const condition: CombatantCondition = {
           id: uid(),
           combatant_id: combatantId,
@@ -1848,6 +1860,7 @@ export function createLocalRepository(): Repository {
           source_combatant_id: input.source_combatant_id ?? null,
           linked_concentration: input.linked_concentration ?? false,
           is_public: input.is_public ?? true,
+          stacks: Math.max(1, Math.min(999, input.stacks ?? 1)),
           created_at: nowISO(),
         };
         db().conditions.push(condition);
@@ -1893,6 +1906,123 @@ export function createLocalRepository(): Repository {
           });
         }
       },
+      async setConditionStacks(id, stacks) {
+        const condition = findOrThrow(db().conditions, (c) => c.id === id, '상태 효과를 찾을 수 없습니다.');
+        const combatant = db().combatants.find((c) => c.id === condition.combatant_id);
+        const encounter = combatant ? db().encounters.find((e) => e.id === combatant.encounter_id) : null;
+        if (encounter) assert(canManageCombat(viewerOf(encounter.campaign_id)), '상태 효과를 변경할 권한이 없습니다.');
+
+        const next = Math.min(999, Math.round(stacks));
+        if (next <= 0) {
+          const data = db();
+          data.conditions = data.conditions.filter((c) => c.id !== id);
+          localStore.commit(makeEvent('combatant_conditions', 'DELETE', null, { id }));
+          if (encounter && combatant) {
+            pushLog(encounter.session_id, {
+              event_type: 'condition.expire',
+              target_type: 'combatant',
+              target_id: combatant.id,
+              target_name: combatant.name,
+              message: `${combatant.name}의 "${condition.custom_name}" 상태가 종료되었습니다.`,
+              visibility: condition.is_public ? 'all' : 'dm',
+            });
+          }
+          return null;
+        }
+
+        const before = condition.stacks;
+        condition.stacks = next;
+        localStore.commit(makeEvent('combatant_conditions', 'UPDATE', condition as unknown as Record<string, unknown>));
+        if (encounter && combatant) {
+          pushLog(encounter.session_id, {
+            event_type: 'condition.stacks',
+            target_type: 'combatant',
+            target_id: combatant.id,
+            target_name: combatant.name,
+            message: `${combatant.name}의 "${condition.custom_name}" ${before} → ${next}`,
+            visibility: condition.is_public ? 'all' : 'dm',
+          });
+        }
+        return snapshot(condition);
+      },
+
+      async conditionLibrary(campaignId) {
+        viewerOf(campaignId);
+        const custom = db().conditionLibrary.filter((c) => c.campaign_id === campaignId);
+        const system: Condition[] = DND5E_CONDITIONS.map((template, index) => ({
+          id: `system:${template.key}`,
+          campaign_id: null,
+          key: template.key,
+          name: template.name,
+          icon: template.icon,
+          description: [template.description, ...template.details].join('\n'),
+          is_stackable: template.isStackable ?? false,
+          color: null,
+          sort_order: index,
+        }));
+        return snapshot([...system, ...custom.sort((a, b) => a.sort_order - b.sort_order)]);
+      },
+
+      async saveConditionTemplate(campaignId, input) {
+        const viewer = viewerOf(campaignId);
+        assert(canEditAssets(viewer), '상태 효과를 편집할 권한이 없습니다.');
+
+        const name = input.name.trim();
+        assert(name.length > 0, '상태 이름을 입력해 주세요.', 'validation');
+
+        const data = db();
+        if (input.id) {
+          const existing = findOrThrow(data.conditionLibrary, (c) => c.id === input.id, '상태 효과를 찾을 수 없습니다.');
+          assert(existing.campaign_id === campaignId, '다른 캠페인의 상태는 수정할 수 없습니다.');
+          Object.assign(existing, {
+            name,
+            icon: input.icon ?? existing.icon,
+            description: input.description ?? existing.description,
+            is_stackable: input.is_stackable ?? existing.is_stackable,
+            color: input.color === undefined ? existing.color : input.color,
+            sort_order: input.sort_order ?? existing.sort_order,
+          });
+          localStore.commit(makeEvent('conditions', 'UPDATE', existing as unknown as Record<string, unknown>));
+          pushAudit(campaignId, 'condition.update', { name });
+          return snapshot(existing);
+        }
+
+        const key = (input.key ?? name).trim().toLowerCase().replace(/\s+/g, '-');
+        assert(
+          !data.conditionLibrary.some((c) => c.campaign_id === campaignId && c.key === key),
+          '같은 이름의 상태가 이미 있습니다.',
+          'conflict',
+        );
+
+        const created: Condition = {
+          id: uid(),
+          campaign_id: campaignId,
+          key,
+          name,
+          icon: input.icon ?? 'sparkles',
+          description: input.description ?? '',
+          is_stackable: input.is_stackable ?? false,
+          color: input.color ?? null,
+          sort_order: input.sort_order ?? data.conditionLibrary.filter((c) => c.campaign_id === campaignId).length,
+        };
+        data.conditionLibrary.push(created);
+        localStore.commit(makeEvent('conditions', 'INSERT', created as unknown as Record<string, unknown>));
+        pushAudit(campaignId, 'condition.create', { name });
+        return snapshot(created);
+      },
+
+      async deleteConditionTemplate(id) {
+        const data = db();
+        const existing = findOrThrow(data.conditionLibrary, (c) => c.id === id, '상태 효과를 찾을 수 없습니다.');
+        const campaignId = existing.campaign_id;
+        assert(campaignId !== null, '시스템 기본 상태는 삭제할 수 없습니다.');
+        const viewer = viewerOf(campaignId);
+        assert(canEditAssets(viewer), '상태 효과를 삭제할 권한이 없습니다.');
+        data.conditionLibrary = data.conditionLibrary.filter((c) => c.id !== id);
+        localStore.commit(makeEvent('conditions', 'DELETE', null, { id }));
+        pushAudit(campaignId, 'condition.delete', { name: existing.name });
+      },
+
       async setConcentration(combatantId, on, note) {
         const combatant = findOrThrow(db().combatants, (c) => c.id === combatantId, '참가자를 찾을 수 없습니다.');
         const encounter = findOrThrow(db().encounters, (e) => e.id === combatant.encounter_id, '전투를 찾을 수 없습니다.');

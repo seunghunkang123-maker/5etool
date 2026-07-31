@@ -130,7 +130,7 @@ export interface VisibleCombatant {
   temp_hp: number | null;
   ac: number | null;
   hp_tier: HpTier;
-  conditions: { id: string; name: string; icon: string }[];
+  conditions: { id: string; key: string; name: string; icon: string; stacks: number }[];
   source_type: Combatant['source_type'];
 }
 
@@ -156,8 +156,10 @@ export function projectCombatantForViewer(
     .filter((c) => dm || c.is_public)
     .map((c) => ({
       id: c.id,
+      key: c.condition_key,
       name: c.custom_name ?? c.condition_key,
       icon: c.icon,
+      stacks: c.stacks,
     }));
 
   if (dm) {
