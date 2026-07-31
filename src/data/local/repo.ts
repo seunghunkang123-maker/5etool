@@ -62,7 +62,8 @@ import { filterCards, rankCards, type CardFilter } from '@/domain/search';
 import { projectCardForViewer, type VisibleCard } from '@/domain/reveal';
 import { canViewPrivateAssets, canEditAssets, canManageCombat, DEFAULT_PERMISSIONS, isDM, isOwner } from '@/domain/permissions';
 import { applyDamage, applyHealing, setMaxHp, setTempHp } from '@/domain/hp';
-import { nextTurn, previousTurn, turnOrder, uniqueCombatantName } from '@/domain/initiative';
+import { combatantNames, nextTurn, previousTurn, turnOrder } from '@/domain/initiative';
+import { normalizeCombatantInput } from '@/domain/combatant';
 import { rollExpression } from '@/domain/dice';
 import { generatedMonsterSchema, type GeneratedMonster, type MonsterPromptInput } from '@/domain/monsterSchema';
 import { CONDITION_MAP, DND5E_CONDITIONS } from '@/domain/conditions';
@@ -1636,48 +1637,36 @@ export function createLocalRepository(): Repository {
         const encounter = findOrThrow(db().encounters, (e) => e.id === encounterId, '전투를 찾을 수 없습니다.');
         const viewer = viewerOf(encounter.campaign_id);
         assert(canManageCombat(viewer), '참가자를 추가할 권한이 없습니다.');
-        const count = Math.min(20, Math.max(1, input.count ?? 1));
+        const { count, ...fields } = normalizeCombatantInput(input);
+        const existingNames = db()
+          .combatants.filter((c) => c.encounter_id === encounterId)
+          .map((c) => c.name);
+        const sortBase = existingNames.length;
         const created: Combatant[] = [];
-        for (let i = 0; i < count; i += 1) {
-          const existingNames = db()
-            .combatants.filter((c) => c.encounter_id === encounterId)
-            .map((c) => c.name);
-          const name = count > 1 || existingNames.some((n) => n === input.name)
-            ? uniqueCombatantName(input.name, existingNames)
-            : input.name;
+
+        combatantNames(fields.name, count, existingNames).forEach((name, index) => {
           const combatant: Combatant = {
+            ...fields,
             id: uid(),
             encounter_id: encounterId,
-            source_type: input.source_type,
-            source_card_id: input.source_card_id ?? null,
-            character_id: input.character_id ?? null,
             name,
-            image_url: input.image_url ?? null,
-            initiative: input.initiative ?? null,
             initiative_tiebreak: 0,
-            dex_mod: Math.floor(((input.dex_score ?? 10) - 10) / 2),
-            dex_score: input.dex_score ?? 10,
-            hp: input.hp,
-            max_hp: input.max_hp,
             temp_hp: 0,
-            ac: input.ac,
-            is_hidden: input.is_hidden ?? false,
             is_defeated: false,
             is_concentrating: false,
             concentration_note: '',
-            hide_hp_numbers: input.hide_hp_numbers ?? input.source_type !== 'pc',
-            dm_notes: input.dm_notes ?? '',
-            sort_order: db().combatants.filter((c) => c.encounter_id === encounterId).length,
+            sort_order: sortBase + index,
           };
           db().combatants.push(combatant);
           created.push(combatant);
-        }
+        });
+
         localStore.commit(makeEvent('encounter_combatants', 'INSERT', null));
         pushLog(encounter.session_id, {
           event_type: 'combat.add',
           target_type: 'combatant',
-          target_name: input.name,
-          message: `${input.name}${count > 1 ? ` ${count}체` : ''}을(를) 전투에 추가했습니다.`,
+          target_name: fields.name,
+          message: `${fields.name}${count > 1 ? ` ${count}체` : ''}을(를) 전투에 추가했습니다.`,
           visibility: 'all',
         });
         return created.map(hydrateCombatant);

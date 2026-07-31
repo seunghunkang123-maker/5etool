@@ -40,13 +40,14 @@ import type {
   UUID,
 } from '../types';
 import { defaultMonsterStats, defaultPreferences, emptySummary, normalizeCharacter, SYSTEM_TEMPLATES } from '../defaults';
-import { sb, toAppError, unwrap, unwrapVoid } from './client';
+import { isMissingColumn, sb, toAppError, unwrap, unwrapVoid } from './client';
 import { filterCards, rankCards } from '@/domain/search';
 import { projectCardForViewer, type VisibleCard } from '@/domain/reveal';
 import { rollExpression } from '@/domain/dice';
 import { generatedMonsterSchema } from '@/domain/monsterSchema';
 import { CONDITION_MAP } from '@/domain/conditions';
-import { nextTurn, previousTurn, turnOrder, uniqueCombatantName } from '@/domain/initiative';
+import { combatantNames, nextTurn, previousTurn, turnOrder } from '@/domain/initiative';
+import { normalizeCombatantInput } from '@/domain/combatant';
 import { applyDamage, applyHealing, setMaxHp, setTempHp } from '@/domain/hp';
 
 /**
@@ -1007,36 +1008,32 @@ export function createSupabaseRepository(): Repository {
         return rows;
       },
       async addCombatant(encounterId, input) {
+        if (!encounterId) throw new AppError('먼저 전투를 만들어 주세요.', 'validation');
+
+        const base = normalizeCombatantInput(input);
         const existing = (unwrap(
           await sb().from('encounter_combatants').select('name').eq('encounter_id', encounterId),
           '참가자를 불러오지 못했습니다.',
         ) as { name: string }[]) ?? [];
-        const names = existing.map((e) => e.name);
-        const count = Math.min(20, Math.max(1, input.count ?? 1));
-        const rows: Row[] = [];
-        for (let i = 0; i < count; i += 1) {
-          const name = count > 1 || names.includes(input.name) ? uniqueCombatantName(input.name, names) : input.name;
-          names.push(name);
-          rows.push({
-            encounter_id: encounterId,
-            source_type: input.source_type,
-            source_card_id: input.source_card_id ?? null,
-            character_id: input.character_id ?? null,
-            name,
-            image_url: input.image_url ?? null,
-            initiative: input.initiative ?? null,
-            dex_score: input.dex_score ?? 10,
-            dex_mod: Math.floor(((input.dex_score ?? 10) - 10) / 2),
-            hp: input.hp,
-            max_hp: input.max_hp,
-            ac: input.ac,
-            is_hidden: input.is_hidden ?? false,
-            hide_hp_numbers: input.hide_hp_numbers ?? input.source_type !== 'pc',
-            dm_notes: input.dm_notes ?? '',
-            sort_order: names.length,
-          });
+        const existingNames = existing.map((e) => e.name);
+
+        const { count, ...fields } = base;
+        const rows: Row[] = combatantNames(base.name, count, existingNames).map((name, index) => ({
+          ...fields,
+          encounter_id: encounterId,
+          name,
+          sort_order: existingNames.length + index,
+        }));
+
+        const created =
+          (unwrap(await sb().from('encounter_combatants').insert(rows).select(), '참가자를 추가하지 못했습니다.') as
+            | Combatant[]
+            | null) ?? [];
+        // insert가 조용히 0건을 돌려주면 화면에는 아무 일도 일어나지 않는다. 원인을 알려 준다.
+        if (created.length === 0) {
+          throw new AppError('참가자를 추가하지 못했습니다. 전투를 관리할 권한이 있는지 확인해 주세요.', 'forbidden');
         }
-        return unwrap(await sb().from('encounter_combatants').insert(rows).select(), '참가자를 추가하지 못했습니다.') as Combatant[];
+        return created;
       },
       async updateCombatant(id, patch) {
         const update = { ...patch };
@@ -1117,25 +1114,46 @@ export function createSupabaseRepository(): Repository {
       },
       async addCondition(combatantId, input) {
         const template = CONDITION_MAP.get(input.condition_key);
-        return unwrap(
-          await sb()
-            .from('combatant_conditions')
-            .insert({
-              combatant_id: combatantId,
-              condition_key: input.condition_key,
-              custom_name: input.custom_name ?? template?.name ?? input.condition_key,
-              icon: input.icon ?? template?.icon ?? 'circle',
-              description: input.description ?? template?.description ?? '',
-              duration_mode: input.duration_mode,
-              duration_rounds: input.duration_rounds ?? null,
-              source_combatant_id: input.source_combatant_id ?? null,
-              linked_concentration: input.linked_concentration ?? false,
-              is_public: input.is_public ?? true,
-            })
-            .select()
-            .single(),
-          '상태 효과를 적용하지 못했습니다.',
-        ) as CombatantCondition;
+        const added = Math.max(1, Math.min(999, Math.round(input.stacks ?? 1)));
+
+        // 이미 걸린 상태를 다시 적용하면 새로 만들지 않고 스택을 올린다(데모 어댑터와 같은 규칙).
+        const { data: existing } = await sb()
+          .from('combatant_conditions')
+          .select('*')
+          .eq('combatant_id', combatantId)
+          .eq('condition_key', input.condition_key)
+          .limit(1)
+          .maybeSingle();
+        if (existing) {
+          const current = (existing as CombatantCondition).stacks ?? 1;
+          const bumped = await this.setConditionStacks((existing as CombatantCondition).id, current + added);
+          if (bumped) return bumped;
+        }
+
+        const row: Row = {
+          combatant_id: combatantId,
+          condition_key: input.condition_key,
+          custom_name: input.custom_name ?? template?.name ?? input.condition_key,
+          icon: input.icon ?? template?.icon ?? 'circle',
+          description: input.description ?? template?.description ?? '',
+          duration_mode: input.duration_mode,
+          duration_rounds: input.duration_rounds ?? null,
+          source_combatant_id: input.source_combatant_id ?? null,
+          linked_concentration: input.linked_concentration ?? false,
+          is_public: input.is_public ?? true,
+          stacks: added,
+        };
+
+        const first = await sb().from('combatant_conditions').insert(row).select().single();
+        if (isMissingColumn(first.error)) {
+          // 0007 마이그레이션 전 스키마에도 상태 적용은 되게 한다.
+          const { stacks: _stacks, ...withoutStacks } = row;
+          return unwrap(
+            await sb().from('combatant_conditions').insert(withoutStacks).select().single(),
+            '상태 효과를 적용하지 못했습니다.',
+          ) as CombatantCondition;
+        }
+        return unwrap(first, '상태 효과를 적용하지 못했습니다.') as CombatantCondition;
       },
       async removeCondition(id) {
         unwrapVoid(await sb().from('combatant_conditions').delete().eq('id', id), '상태 효과를 해제하지 못했습니다.');
@@ -1156,16 +1174,24 @@ export function createSupabaseRepository(): Repository {
       async conditionLibrary(campaignId) {
         // 시스템 기본(campaign_id is null) + 이 캠페인 전용을 함께 가져온다.
         // RLS가 구성원이 아닌 캠페인의 상태를 걸러 낸다.
-        const rows = unwrap(
-          await sb()
-            .from('conditions')
-            .select('*')
-            .or(`campaign_id.is.null,campaign_id.eq.${campaignId}`)
-            .order('campaign_id', { nullsFirst: true })
-            .order('sort_order'),
-          '상태 효과 목록을 불러오지 못했습니다.',
-        ) as Condition[];
-        return rows;
+        const filter = `campaign_id.is.null,campaign_id.eq.${campaignId}`;
+        const full = await sb()
+          .from('conditions')
+          .select('*')
+          .or(filter)
+          .order('campaign_id', { nullsFirst: true })
+          .order('sort_order');
+
+        if (isMissingColumn(full.error)) {
+          // 0007 마이그레이션 전 스키마에서도 목록은 보이게 한다(정렬·색상만 기본값).
+          const basic = unwrap(
+            await sb().from('conditions').select('*').or(filter).order('name'),
+            '상태 효과 목록을 불러오지 못했습니다.',
+          ) as Condition[];
+          return basic.map((row) => ({ ...row, is_stackable: row.is_stackable ?? false, color: row.color ?? null, sort_order: row.sort_order ?? 0 }));
+        }
+
+        return (unwrap(full, '상태 효과 목록을 불러오지 못했습니다.') as Condition[]) ?? [];
       },
 
       async saveConditionTemplate(campaignId, input) {

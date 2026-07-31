@@ -11,6 +11,7 @@ import { Badge, LoadingBlock } from '@/components/ui/feedback';
 import { confirmAndRun } from '@/components/ui/ConfirmDialog';
 import { toast } from '@/components/ui/Toast';
 import { formatElapsed } from '@/lib/format';
+import { runOrToast } from '@/lib/errors';
 import { isDM } from '@/domain/permissions';
 import { useAuthStore } from '@/stores/auth';
 import { EncounterPanel } from '@/features/combat/EncounterPanel';
@@ -197,16 +198,23 @@ function DmWorkspace({ campaignId, sessionId, mobileTab }: { campaignId: string;
       toast.warning('먼저 전투를 만들어 주세요.');
       return;
     }
-    await repo().combat.addCombatant(encounter.id, {
-      source_type: card.type === 'npc' ? 'npc' : 'monster',
-      source_card_id: card.id,
-      name: card.name,
-      image_url: card.image_url,
-      hp: card.stats?.hp ?? 10,
-      max_hp: card.stats?.max_hp ?? 10,
-      ac: card.stats?.ac ?? 12,
-      dex_score: card.stats?.abilities.dex ?? 10,
-    });
+    // 실패하면 조용히 넘어가지 않고 원인을 보여 준다.
+    const ok = await runOrToast(
+      () =>
+        repo().combat.addCombatant(encounter.id, {
+          source_type: card.type === 'npc' ? 'npc' : 'monster',
+          source_card_id: card.id,
+          name: card.name,
+          image_url: card.image_url,
+          hp: card.stats?.hp ?? 10,
+          max_hp: card.stats?.max_hp ?? 10,
+          ac: card.stats?.ac ?? 12,
+          dex_score: card.stats?.abilities.dex ?? 10,
+        }),
+      toast.error,
+      '전투에 추가하지 못했습니다.',
+    );
+    if (!ok) return;
     void client.invalidateQueries({ queryKey: qk.combatants(encounter.id) });
     toast.success(`${card.name}을(를) 전투에 추가했습니다.`);
   };

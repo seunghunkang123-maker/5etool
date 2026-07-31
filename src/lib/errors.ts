@@ -47,3 +47,24 @@ export function isConflict(error: unknown): boolean {
 export function isAuthError(error: unknown): boolean {
   return errorCode(error) === 'unauthorized';
 }
+
+/**
+ * 실패해도 조용히 넘어가지 않게 한다.
+ *
+ * onClick={() => void doSomething()} 처럼 쓰면 오류가 처리되지 않은 프라미스로
+ * 사라져 화면에는 아무 반응이 없다. 이 함수로 감싸면 항상 메시지가 뜬다.
+ * 성공하면 true, 실패하면 false를 돌려주므로 뒤처리를 이어서 할 수 있다.
+ */
+export async function runOrToast(
+  action: () => Promise<unknown>,
+  onError: (message: string) => void,
+  fallback?: string,
+): Promise<boolean> {
+  try {
+    await action();
+    return true;
+  } catch (error) {
+    onError(toUserMessage(error, fallback));
+    return false;
+  }
+}

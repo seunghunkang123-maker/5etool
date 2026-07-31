@@ -7,6 +7,7 @@ import { Checkbox, Field, Input, Select } from '@/components/ui/Field';
 import { toEntries } from '@/domain/conditionLibrary';
 import { DURATION_MODES, DURATION_MODE_LABELS, type Combatant, type DurationMode } from '@/data/types';
 import type { ConditionInput } from '@/data/repository';
+import { toUserMessage } from '@/lib/errors';
 
 export function ConditionDialog({
   campaignId,
@@ -22,7 +23,7 @@ export function ConditionDialog({
   onSubmit: (input: ConditionInput) => Promise<void>;
 }) {
   // 시스템 기본 + 캠페인 전용 상태를 모두 고를 수 있어야 한다.
-  const { data: library = [] } = useQuery({
+  const { data: library = [], error: libraryError } = useQuery({
     queryKey: ['condition-library', campaignId],
     queryFn: () => repo().combat.conditionLibrary(campaignId),
     staleTime: 60_000,
@@ -37,12 +38,14 @@ export function ConditionDialog({
   const [linkedConcentration, setLinkedConcentration] = useState(false);
   const [isPublic, setIsPublic] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const effectiveKey = conditionKey || entries[0]?.key || '';
   const selected = entries.find((entry) => entry.key === effectiveKey) ?? null;
 
   const submit = async () => {
     setBusy(true);
+    setError('');
     try {
       const isCustom = effectiveKey === '__custom__';
       await onSubmit({
@@ -58,6 +61,8 @@ export function ConditionDialog({
         is_public: isPublic,
       });
       onClose();
+    } catch (e) {
+      setError(toUserMessage(e, '상태 효과를 적용하지 못했습니다.'));
     } finally {
       setBusy(false);
     }
@@ -80,6 +85,12 @@ export function ConditionDialog({
       }
     >
       <div className="flex flex-col gap-4">
+        {error || libraryError ? (
+          <p role="alert" className="rounded-lg bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+            {error || toUserMessage(libraryError, '상태 효과 목록을 불러오지 못했습니다.')}
+          </p>
+        ) : null}
+
         <Field label="상태 효과">
           {({ id }) => (
             <Select id={id} value={effectiveKey} onChange={(e) => setConditionKey(e.target.value)} autoFocus>

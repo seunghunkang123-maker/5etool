@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { toAppError } from './client';
+import { isMissingColumn, toAppError } from './client';
 
 /**
  * 서버 오류를 사용자가 조치할 수 있는 메시지로 바꾸는지 확인한다.
@@ -35,7 +35,43 @@ describe('toAppError', () => {
     expect(error.code).toBe('unknown');
   });
 
+  it('열이나 표가 없어도 마이그레이션 적용을 안내한다', () => {
+    for (const code of ['42703', '42P01', 'PGRST204']) {
+      const error = toAppError({ message: 'column does not exist', code }, '실패했습니다.');
+      expect(error.code).toBe('server');
+      expect(error.message).toMatch(/마이그레이션/);
+    }
+  });
+
+  it('HP 제약 위반은 무엇이 문제인지 알려 준다', () => {
+    const error = toAppError(
+      { message: 'new row violates check constraint "combatant_hp_within_max"', code: '23514' },
+      '참가자를 추가하지 못했습니다.',
+    );
+    expect(error.code).toBe('validation');
+    expect(error.message).toMatch(/현재 HP가 최대 HP보다 클 수 없습니다/);
+  });
+
+  it('그 밖의 체크 제약은 일반 안내로 바꾼다', () => {
+    const error = toAppError({ message: 'violates check constraint "x"', code: '23514' }, 'x');
+    expect(error.code).toBe('validation');
+    expect(error.message).toMatch(/규칙에 맞지 않습니다/);
+  });
+
+  it('필수 값 누락은 채워 달라고 안내한다', () => {
+    expect(toAppError({ message: 'null value', code: '23502' }, 'x').message).toMatch(/필수 값/);
+  });
+
   it('오류가 없으면 기본 문구', () => {
     expect(toAppError(null, '기본').message).toBe('기본');
+  });
+});
+
+describe('isMissingColumn', () => {
+  it('스키마가 덜 적용된 오류만 참으로 본다', () => {
+    expect(isMissingColumn({ message: '', code: '42703' })).toBe(true);
+    expect(isMissingColumn({ message: '', code: 'PGRST204' })).toBe(true);
+    expect(isMissingColumn({ message: '', code: '42501' })).toBe(false);
+    expect(isMissingColumn(null)).toBe(false);
   });
 });

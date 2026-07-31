@@ -109,6 +109,35 @@ export function uniqueCombatantName(baseName: string, existingNames: readonly st
 }
 
 /**
+ * 한 번에 여러 참가자를 넣을 때 쓸 이름 목록을 만든다.
+ *
+ * 하나만 넣고 이름이 겹치지 않으면 그대로 쓴다.
+ * 여러 마리를 넣거나 이름이 겹치면 "고블린 1", "고블린 2"처럼 1번부터 번호를 붙인다.
+ * (uniqueCombatantName은 첫 개체에 번호를 붙이지 않아 "고블린, 고블린 2"가 되므로
+ *  여러 마리를 넣는 경우에는 이 함수를 쓴다.)
+ */
+export function combatantNames(baseName: string, count: number, existingNames: readonly string[]): string[] {
+  const base = baseName.trim() || '참가자';
+  const pool = [...existingNames];
+  const names: string[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const taken = pool.some((n) => n.trim() === base);
+    let name: string;
+    if (count === 1 && !taken) {
+      name = base;
+    } else {
+      const candidate = uniqueCombatantName(base, pool);
+      // 번호가 붙지 않았다면(= 아직 아무도 없다면) 1번부터 시작한다.
+      name = candidate === base ? `${base} 1` : candidate;
+    }
+    pool.push(name);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
  * 같은 이름의 첫 참가자가 번호 없이 남아 있으면 "이름 1"로 정규화한다.
  * (고블린, 고블린 2 → 고블린 1, 고블린 2)
  */

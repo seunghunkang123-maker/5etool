@@ -273,6 +273,70 @@ begin
 end
 $$;
 
+-- 앱이 실제로 보내는 열 목록 그대로 여러 명을 한 번에 넣을 수 있어야 한다.
+-- (한 열이라도 없거나 제약에 걸리면 "참가자 추가"가 통째로 실패한다.)
+do $$
+declare
+  v_rows integer;
+begin
+  insert into public.encounter_combatants
+    (encounter_id, source_type, source_card_id, character_id, name, image_url,
+     initiative, dex_score, dex_mod, hp, max_hp, ac, is_hidden, hide_hp_numbers, dm_notes, sort_order)
+  select
+    current_setting('test.encounter')::uuid, 'custom', null, null, '성난 군중 ' || i, null,
+    null, 14, 2, 24, 24, 11, false, true, '', i
+  from generate_series(1, 3) as i;
+
+  select count(*) into v_rows
+  from public.encounter_combatants
+  where encounter_id = current_setting('test.encounter')::uuid and name like '성난 군중%';
+  if v_rows <> 3 then
+    raise exception '검사 실패: 한 번에 여러 참가자를 넣지 못했습니다. rows=%', v_rows;
+  end if;
+
+  -- 현재 HP가 최대 HP보다 크면 거부된다. 클라이언트가 미리 맞춰 보내야 하는 이유다.
+  begin
+    insert into public.encounter_combatants (encounter_id, name, hp, max_hp, ac)
+    values (current_setting('test.encounter')::uuid, '잘못된 HP', 40, 12, 10);
+    raise exception '검사 실패: 현재 HP가 최대 HP보다 큰 참가자가 저장되었습니다.';
+  exception
+    when check_violation then null;
+  end;
+
+  -- 뒤에 오는 검사가 참가자 수를 세므로 여기서 넣은 것은 되돌린다.
+  delete from public.encounter_combatants
+  where encounter_id = current_setting('test.encounter')::uuid and name like '성난 군중%';
+end
+$$;
+
+-- 같은 상태를 다시 적용하면 스택이 쌓인다(0007 마이그레이션).
+do $$
+declare
+  v_condition uuid;
+  v_stacks    integer;
+begin
+  insert into public.combatant_conditions (combatant_id, condition_key, custom_name, duration_mode, stacks)
+  values (current_setting('test.combatant')::uuid, 'bleed', '출혈', 'manual', 1)
+  returning id into v_condition;
+
+  update public.combatant_conditions set stacks = stacks + 2 where id = v_condition;
+  select stacks into v_stacks from public.combatant_conditions where id = v_condition;
+  if v_stacks <> 3 then
+    raise exception '검사 실패: 상태 스택이 누적되지 않았습니다. stacks=%', v_stacks;
+  end if;
+
+  -- 스택은 0 미만이나 999 초과가 될 수 없다.
+  begin
+    update public.combatant_conditions set stacks = -1 where id = v_condition;
+    raise exception '검사 실패: 음수 스택이 저장되었습니다.';
+  exception
+    when check_violation then null;
+  end;
+
+  delete from public.combatant_conditions where id = v_condition;
+end
+$$;
+
 select set_config('request.jwt.claim.sub', current_setting('test.player'), false);
 do $$
 declare

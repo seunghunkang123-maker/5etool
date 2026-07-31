@@ -17,11 +17,11 @@ import { repo } from '@/data';
 import { qk, useCombatants, useEncounter } from '@/hooks/queries';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Field';
-import { Badge, EmptyState } from '@/components/ui/feedback';
+import { Badge, EmptyState, ErrorState } from '@/components/ui/feedback';
 import { HpBar } from '@/components/ui/HpBar';
 import { toast } from '@/components/ui/Toast';
 import { confirmAndRun } from '@/components/ui/ConfirmDialog';
-import { toUserMessage } from '@/lib/errors';
+import { runOrToast, toUserMessage } from '@/lib/errors';
 import { useShortcuts } from '@/hooks/useShortcuts';
 import { rollExpression } from '@/domain/dice';
 import { abilityModifier } from '@/domain/abilities';
@@ -38,13 +38,15 @@ import { cn } from '@/lib/cn';
 /** 던전 마스터용 전투 패널 */
 export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; campaignId: string }) {
   const client = useQueryClient();
-  const { data: encounter } = useEncounter(sessionId);
-  const { data: combatants = [] } = useCombatants(encounter?.id);
+  const { data: encounter, error: encounterError, isLoading: encounterLoading, refetch: refetchEncounter } = useEncounter(sessionId);
+  const { data: combatants = [], error: combatantsError } = useCombatants(encounter?.id);
   const [adding, setAdding] = useState(false);
   const [conditionTarget, setConditionTarget] = useState<Combatant | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   // 턴 진행이 겹쳐서 실행되면 라운드 계산이 어긋나므로 한 번에 하나만 처리한다.
   const [turnBusy, setTurnBusy] = useState(false);
+  // 전투 만들기를 연달아 누르면 빈 전투가 여러 개 생긴다.
+  const [creating, setCreating] = useState(false);
 
   const order = useMemo(() => turnOrder(combatants, encounter?.tiebreak_rule ?? 'dex_mod'), [combatants, encounter?.tiebreak_rule]);
 
@@ -53,26 +55,39 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
     if (encounter) void client.invalidateQueries({ queryKey: qk.combatants(encounter.id) });
   };
 
+  /** 실패하면 반드시 메시지를 띄우고, 성공하면 목록을 새로 고친다. */
+  const run = (action: () => Promise<unknown>) =>
+    void runOrToast(action, toast.error).then((ok) => {
+      if (ok) refresh();
+    });
+
   useShortcuts([
     { combo: 'i', handler: () => document.getElementById('next-turn-button')?.focus() },
   ]);
 
   const createEncounter = async () => {
+    if (creating) return;
+    setCreating(true);
     try {
-      await repo().combat.createEncounter(sessionId, '새 전투');
+      await runOrToast(() => repo().combat.createEncounter(sessionId, '새 전투'), toast.error, '전투를 만들지 못했습니다.');
       refresh();
-    } catch (error) {
-      toast.error(toUserMessage(error));
+    } finally {
+      setCreating(false);
     }
   };
+
+  // 불러오기가 실패했는데 "전투가 없습니다"만 보이면 원인을 알 수 없다.
+  if (encounterError) {
+    return <ErrorState message={toUserMessage(encounterError, '전투를 불러오지 못했습니다.')} onRetry={() => void refetchEncounter()} />;
+  }
 
   if (!encounter) {
     return (
       <EmptyState
         icon={<Swords aria-hidden className="h-8 w-8" />}
-        title="진행 중인 전투가 없습니다"
+        title={encounterLoading ? '전투를 불러오는 중입니다' : '진행 중인 전투가 없습니다'}
         description="전투를 만들고 플레이어와 몬스터를 추가하세요."
-        action={{ label: '전투 만들기', onClick: createEncounter }}
+        action={encounterLoading || creating ? undefined : { label: '전투 만들기', onClick: createEncounter }}
       />
     );
   }
@@ -111,33 +126,34 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
     }
   };
 
-  const rollAllInitiative = async () => {
-    try {
-      await rollMissingInitiative();
-    } catch (error) {
-      toast.error(toUserMessage(error));
-    }
-  };
+  const rollAllInitiative = () =>
+    run(async () => {
+      const rolled = await rollMissingInitiative();
+      toast.success(rolled > 0 ? `이니셔티브를 굴렸습니다. (${rolled}명)` : '이니셔티브를 굴렸습니다.');
+    });
 
+  /** 아직 이니셔티브가 없는 참가자만 굴린다. 굴린 인원 수를 돌려준다. */
   const rollMissingInitiative = async () => {
+    let rolled = 0;
     for (const combatant of combatants) {
       if (combatant.initiative !== null) continue;
-      const bonus = combatant.dex_mod;
       const result = rollExpression('1d20');
-      await repo().combat.updateCombatant(combatant.id, { initiative: result.total + bonus });
+      await repo().combat.updateCombatant(combatant.id, { initiative: result.total + combatant.dex_mod });
+      rolled += 1;
     }
-    refresh();
-    toast.success('이니셔티브를 굴렸습니다.');
+    return rolled;
   };
 
-  const startCombat = async () => {
-    try {
+  const startCombat = () =>
+    run(async () => {
+      // 이니셔티브를 아무도 굴리지 않았으면 먼저 굴려 준다.
+      // 예전에는 버튼이 비활성이라 왜 시작이 안 되는지 알 수 없었다.
+      if (order.length === 0) {
+        const rolled = await rollMissingInitiative();
+        if (rolled > 0) toast.info(`이니셔티브를 자동으로 굴렸습니다. (${rolled}명)`);
+      }
       await repo().combat.updateEncounter(encounter.id, { status: 'active' });
-      refresh();
-    } catch (error) {
-      toast.error(toUserMessage(error));
-    }
-  };
+    });
 
   const endCombat = () =>
     confirmAndRun(
@@ -179,7 +195,13 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
             <Plus aria-hidden className="h-4 w-4" />
             참가자
           </Button>
-          <Button size="sm" variant="secondary" onClick={rollAllInitiative}>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={rollAllInitiative}
+            disabled={combatants.length === 0}
+            title="이니셔티브가 비어 있는 참가자만 굴립니다."
+          >
             <Dices aria-hidden className="h-4 w-4" />
             전체 굴림
           </Button>
@@ -188,7 +210,13 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
               전투 종료
             </Button>
           ) : (
-            <Button size="sm" variant="primary" onClick={startCombat} disabled={order.length === 0}>
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={startCombat}
+              disabled={combatants.length === 0}
+              title={combatants.length === 0 ? '참가자를 먼저 추가하세요.' : '이니셔티브가 없으면 자동으로 굴립니다.'}
+            >
               전투 시작
             </Button>
           )}
@@ -197,7 +225,7 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
 
       {encounter.status === 'active' ? (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-2">
-          <Button size="sm" variant="secondary" onClick={async () => { await repo().combat.previousTurn(encounter.id); refresh(); }} aria-label="이전 턴">
+          <Button size="sm" variant="secondary" onClick={() => run(() => repo().combat.previousTurn(encounter.id))} aria-label="이전 턴">
             <ChevronLeft aria-hidden className="h-4 w-4" />
             이전
           </Button>
@@ -210,7 +238,7 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
               size="sm"
               variant="ghost"
               aria-label="라운드 감소"
-              onClick={async () => { await repo().combat.setRound(encounter.id, encounter.round - 1); refresh(); }}
+              onClick={() => run(() => repo().combat.setRound(encounter.id, encounter.round - 1))}
             >
               −
             </Button>
@@ -221,12 +249,18 @@ export function EncounterPanel({ sessionId, campaignId }: { sessionId: string; c
               size="sm"
               variant="ghost"
               aria-label="라운드 증가"
-              onClick={async () => { await repo().combat.setRound(encounter.id, encounter.round + 1); refresh(); }}
+              onClick={() => run(() => repo().combat.setRound(encounter.id, encounter.round + 1))}
             >
               +
             </Button>
           </div>
         </div>
+      ) : null}
+
+      {combatantsError ? (
+        <p role="alert" className="rounded-lg bg-[var(--color-danger)]/10 px-3 py-2 text-sm text-[var(--color-danger)]">
+          {toUserMessage(combatantsError, '참가자 목록을 불러오지 못했습니다.')}
+        </p>
       ) : null}
 
       {selected.length > 0 ? <AreaDamageBar count={selected.length} onApply={applyToSelected} onClear={() => setSelected([])} /> : null}
@@ -344,36 +378,46 @@ function CombatantRow({
 
   const preview = value > 0 ? applyDamage({ hp: combatant.hp, maxHp: combatant.max_hp, tempHp: combatant.temp_hp }, value) : null;
 
-  const apply = async (kind: 'damage' | 'heal' | 'temp') => {
+  /** 실패하면 반드시 메시지를 띄운다. 성공했을 때만 뒷정리를 한다. */
+  const run = (action: () => Promise<unknown>, after?: () => void) =>
+    void runOrToast(action, toast.error).then((ok) => {
+      if (!ok) return;
+      after?.();
+      onChanged();
+    });
+
+  const apply = (kind: 'damage' | 'heal' | 'temp') => {
     if (value <= 0) return;
-    await repo().combat.applyHp(encounter.id, [{ combatantId: combatant.id, amount: value, kind }]);
-
-    if (kind === 'damage' && combatant.is_concentrating) {
-      const check = evaluateConcentration({
-        isConcentrating: true,
-        damage: value,
-        droppedToZero: preview?.droppedToZero ?? false,
-      });
-      if (check.required) {
-        toast.warning(`${combatant.name}의 집중 유지 판정이 필요합니다. ${check.reason}`);
-      } else if (check.reason) {
-        toast.info(`${combatant.name}: ${check.reason}`);
-      }
-    }
-    setAmount('');
-    onChanged();
+    run(
+      () => repo().combat.applyHp(encounter.id, [{ combatantId: combatant.id, amount: value, kind }]),
+      () => {
+        if (kind === 'damage' && combatant.is_concentrating) {
+          const check = evaluateConcentration({
+            isConcentrating: true,
+            damage: value,
+            droppedToZero: preview?.droppedToZero ?? false,
+          });
+          if (check.required) {
+            toast.warning(`${combatant.name}의 집중 유지 판정이 필요합니다. ${check.reason}`);
+          } else if (check.reason) {
+            toast.info(`${combatant.name}: ${check.reason}`);
+          }
+        }
+        setAmount('');
+      },
+    );
   };
 
-  const setInitiative = async (next: string) => {
+  const setInitiative = (next: string) => {
     const parsed = next === '' ? null : Number(next);
-    await repo().combat.updateCombatant(combatant.id, { initiative: parsed === null || Number.isNaN(parsed) ? null : parsed });
-    onChanged();
+    run(() =>
+      repo().combat.updateCombatant(combatant.id, { initiative: parsed === null || Number.isNaN(parsed) ? null : parsed }),
+    );
   };
 
-  const rollInitiative = async () => {
+  const rollInitiative = () => {
     const result = rollExpression('1d20');
-    await repo().combat.updateCombatant(combatant.id, { initiative: result.total + combatant.dex_mod });
-    onChanged();
+    run(() => repo().combat.updateCombatant(combatant.id, { initiative: result.total + combatant.dex_mod }));
   };
 
   return (
@@ -402,7 +446,7 @@ function CombatantRow({
           id={`init-${combatant.id}`}
           type="number"
           value={combatant.initiative ?? ''}
-          onChange={(e) => void setInitiative(e.target.value)}
+          onChange={(e) => setInitiative(e.target.value)}
           className="w-14 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-center font-mono text-sm"
           placeholder="—"
         />
@@ -449,10 +493,7 @@ function CombatantRow({
               {!condition.is_public ? <EyeOff aria-label="비공개" className="h-3 w-3 text-[var(--color-fg-muted)]" /> : null}
               <button
                 type="button"
-                onClick={async () => {
-                  await repo().combat.setConditionStacks(condition.id, condition.stacks - 1);
-                  onChanged();
-                }}
+                onClick={() => run(() => repo().combat.setConditionStacks(condition.id, (condition.stacks ?? 1) - 1))}
                 aria-label={`${condition.custom_name} 스택 1 줄이기`}
                 className="rounded px-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
               >
@@ -460,10 +501,7 @@ function CombatantRow({
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  await repo().combat.setConditionStacks(condition.id, condition.stacks + 1);
-                  onChanged();
-                }}
+                onClick={() => run(() => repo().combat.setConditionStacks(condition.id, (condition.stacks ?? 1) + 1))}
                 aria-label={`${condition.custom_name} 스택 1 늘리기`}
                 className="rounded px-1 text-xs text-[var(--color-fg-muted)] hover:text-[var(--color-fg)]"
               >
@@ -471,10 +509,7 @@ function CombatantRow({
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  await repo().combat.removeCondition(condition.id);
-                  onChanged();
-                }}
+                onClick={() => run(() => repo().combat.removeCondition(condition.id))}
                 aria-label={`${condition.custom_name} 해제`}
                 className="rounded px-0.5 text-[var(--color-fg-muted)] hover:text-[var(--color-danger)]"
               >
@@ -498,17 +533,17 @@ function CombatantRow({
           placeholder="값"
           className="w-20 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1.5 text-sm"
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void apply('damage');
+            if (e.key === 'Enter') apply('damage');
           }}
         />
-        <Button size="sm" variant="danger" onClick={() => void apply('damage')} disabled={value <= 0}>
+        <Button size="sm" variant="danger" onClick={() => apply('damage')} disabled={value <= 0}>
           피해
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void apply('heal')} disabled={value <= 0}>
+        <Button size="sm" variant="secondary" onClick={() => apply('heal')} disabled={value <= 0}>
           <Heart aria-hidden className="h-3.5 w-3.5" />
           회복
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void apply('temp')} disabled={value <= 0}>
+        <Button size="sm" variant="secondary" onClick={() => apply('temp')} disabled={value <= 0}>
           임시
         </Button>
 
@@ -527,10 +562,7 @@ function CombatantRow({
             size="sm"
             variant="ghost"
             aria-pressed={combatant.is_concentrating}
-            onClick={async () => {
-              await repo().combat.setConcentration(combatant.id, !combatant.is_concentrating);
-              onChanged();
-            }}
+            onClick={() => run(() => repo().combat.setConcentration(combatant.id, !combatant.is_concentrating))}
           >
             집중 {combatant.is_concentrating ? '해제' : '설정'}
           </Button>

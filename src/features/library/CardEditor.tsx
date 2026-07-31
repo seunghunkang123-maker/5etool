@@ -346,16 +346,30 @@ function StatsEditor({ stats, onChange }: { stats: Omit<MonsterStats, 'card_id'>
         <Field label="방어도">
           {({ id }) => <Input id={id} type="number" value={stats.ac} onChange={(e) => set('ac', Number(e.target.value))} />}
         </Field>
-        <Field label="현재 HP">
-          {({ id }) => <Input id={id} type="number" value={stats.hp} onChange={(e) => set('hp', Number(e.target.value))} />}
+        <Field label="현재 HP" hint="최대 HP를 넘을 수 없습니다.">
+          {({ id }) => (
+            <Input
+              id={id}
+              type="number"
+              min={0}
+              max={stats.max_hp}
+              value={stats.hp}
+              // 최대치를 넘는 값은 전투에 추가할 때 데이터베이스 제약에 걸리므로 여기서 막는다.
+              onChange={(e) => set('hp', Math.max(0, Math.min(stats.max_hp, Number(e.target.value) || 0)))}
+            />
+          )}
         </Field>
         <Field label="최대 HP">
           {({ id }) => (
             <Input
               id={id}
               type="number"
+              min={1}
               value={stats.max_hp}
-              onChange={(e) => onChange({ ...stats, max_hp: Number(e.target.value), hp: Math.min(stats.hp, Number(e.target.value)) })}
+              onChange={(e) => {
+                const max = Math.max(1, Number(e.target.value) || 1);
+                onChange({ ...stats, max_hp: max, hp: Math.min(stats.hp, max) });
+              }}
             />
           )}
         </Field>

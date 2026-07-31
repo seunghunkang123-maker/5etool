@@ -37,6 +37,23 @@ interface PostgrestErrorLike {
   details?: string;
 }
 
+/**
+ * 스키마에 열이나 표가 없을 때 나오는 코드.
+ * 42703 = undefined_column, 42P01 = undefined_table,
+ * PGRST204 = PostgREST가 스키마 캐시에서 열을 찾지 못함.
+ */
+function isMissingSchemaCode(code: string): boolean {
+  return code === '42703' || code === '42P01' || code === 'PGRST204';
+}
+
+/**
+ * 마이그레이션이 덜 적용된 데이터베이스인지 판별한다.
+ * 새 열을 쓰는 기능은 이 값을 보고 옛 스키마용 경로로 되돌아간다.
+ */
+export function isMissingColumn(error: PostgrestErrorLike | null | undefined): boolean {
+  return Boolean(error && isMissingSchemaCode(error.code ?? ''));
+}
+
 /** Postgrest 오류를 사용자용 한국어 메시지로 변환한다. */
 export function toAppError(error: PostgrestErrorLike | null | undefined, fallback: string): AppError {
   if (!error) return new AppError(fallback, 'unknown');
@@ -53,14 +70,24 @@ export function toAppError(error: PostgrestErrorLike | null | undefined, fallbac
   if (code === '23503') {
     return new AppError('연결된 데이터가 있어 처리할 수 없습니다.', 'conflict', error);
   }
-  // 서버 함수가 아직 없다. 마이그레이션을 적용하지 않은 경우다.
+  // 서버 함수나 열이 아직 없다. 마이그레이션을 적용하지 않은 경우다.
   // 사용자가 입력을 고쳐서 해결할 수 없는 문제이므로 원인을 그대로 알려 준다.
-  if (code === 'PGRST202' || code === '42883') {
+  if (code === 'PGRST202' || code === '42883' || isMissingSchemaCode(code)) {
     return new AppError(
       '서버 기능이 준비되지 않았습니다. 데이터베이스 마이그레이션이 모두 적용되었는지 확인해 주세요.',
       'server',
       error,
     );
+  }
+  // 23514는 체크 제약 위반이다. 어떤 값이 문제인지 알 수 있으면 알려 준다.
+  if (code === '23514') {
+    const detail = /combatant_hp_within_max/.test(`${error.message} ${error.details ?? ''}`)
+      ? '현재 HP가 최대 HP보다 클 수 없습니다.'
+      : '입력값이 규칙에 맞지 않습니다.';
+    return new AppError(detail, 'validation', error);
+  }
+  if (code === '23502') {
+    return new AppError('빠진 항목이 있습니다. 필수 값을 모두 채워 주세요.', 'validation', error);
   }
   // P0001/P0002는 이 프로젝트의 SQL 함수가 직접 올린 오류다.
   // 함수가 한국어 메시지를 담아 던지므로 그대로 보여 준다.
