@@ -213,3 +213,42 @@ export function docToMarkdown(doc: RichDoc | null | undefined): string {
   };
   return render(doc as DocNode).trim();
 }
+
+/**
+ * 서식을 지원하기 전에 저장된 평문을 HTML로 올린다.
+ *
+ * 특성·장비 같은 칸은 원래 평문이었다. 서식 편집기로 바꾸면서 기존 값을 그대로
+ * 넣으면 줄바꿈이 사라지고, 값에 `<`가 들어 있으면 태그로 오해된다.
+ * 태그가 없어 보이면 평문으로 보고 이스케이프한 뒤 줄바꿈을 <br>로 바꾼다.
+ */
+export function textOrHtmlToHtml(value: string | null | undefined): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+
+  // 우리가 허용하는 태그가 하나라도 있으면 이미 HTML로 저장된 값이다.
+  const looksLikeHtml = /<(\/?)(p|br|strong|b|em|i|u|s|del|code|ul|ol|li|blockquote|h[1-4]|span)\b/i.test(raw);
+  if (looksLikeHtml) return sanitizeHtml(raw);
+
+  const paragraphs = raw
+    .split(/\n{2,}/)
+    .map((block) => `<p>${escapeHtml(block).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return sanitizeHtml(paragraphs);
+}
+
+/** 서식이 있는 값에서 순수 텍스트만 뽑는다. 검색과 미리보기에 쓴다. */
+export function htmlToPlainText(value: string | null | undefined): string {
+  const raw = (value ?? '').trim();
+  if (!raw) return '';
+  return sanitizeHtml(raw)
+    .replace(/<\/(p|div|li|h[1-4]|blockquote)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}

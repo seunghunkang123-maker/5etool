@@ -53,6 +53,20 @@ export function toAppError(error: PostgrestErrorLike | null | undefined, fallbac
   if (code === '23503') {
     return new AppError('연결된 데이터가 있어 처리할 수 없습니다.', 'conflict', error);
   }
+  // 서버 함수가 아직 없다. 마이그레이션을 적용하지 않은 경우다.
+  // 사용자가 입력을 고쳐서 해결할 수 없는 문제이므로 원인을 그대로 알려 준다.
+  if (code === 'PGRST202' || code === '42883') {
+    return new AppError(
+      '서버 기능이 준비되지 않았습니다. 데이터베이스 마이그레이션이 모두 적용되었는지 확인해 주세요.',
+      'server',
+      error,
+    );
+  }
+  // P0001/P0002는 이 프로젝트의 SQL 함수가 직접 올린 오류다.
+  // 함수가 한국어 메시지를 담아 던지므로 그대로 보여 준다.
+  if (code === 'P0001' || code === 'P0002') {
+    return new AppError(error.message || fallback, code === 'P0002' ? 'not_found' : 'validation', error);
+  }
   if (code.startsWith('P0') || code === '23514') {
     return new AppError('입력값이 규칙에 맞지 않습니다.', 'validation', error);
   }

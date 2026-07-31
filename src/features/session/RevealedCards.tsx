@@ -4,6 +4,7 @@ import { useVisibleCards } from '@/hooks/queries';
 import { EmptyState, Badge } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/Button';
 import { CardImage } from '@/components/ui/CardImage';
+import { FormattedText } from '@/components/ui/FormattedText';
 import { Dialog } from '@/components/ui/Dialog';
 import { RichTextView } from '@/features/editor/RichTextView';
 import { HpBar } from '@/components/ui/HpBar';
@@ -128,7 +129,8 @@ function CardDetailDialog({ card, onClose }: { card: VisibleCard; onClose: () =>
           <ul className="flex flex-col gap-2">
             {card.sections.map((section) => (
               <li key={section.id} className="rounded-lg bg-[var(--color-surface-2)] p-2.5 text-sm">
-                <strong>{section.name}.</strong> {section.description}
+                <strong>{section.name}.</strong>
+                <FormattedText value={section.description} className="mt-0.5" />
               </li>
             ))}
           </ul>

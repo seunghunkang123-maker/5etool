@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { BedDouble, Coffee, Heart, Plus, Trash2 } from 'lucide-react';
 import { repo } from '@/data';
 import { qk } from '@/hooks/queries';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/Field';
+import { Checkbox, Field, Input, Select } from '@/components/ui/Field';
 import { HpBar } from '@/components/ui/HpBar';
 import { toast } from '@/components/ui/Toast';
 import { toUserMessage } from '@/lib/errors';
@@ -14,6 +14,7 @@ import { ABILITY_KEYS, ABILITY_LABELS, type CharacterResource, type PlayerCharac
 import { abilityModifier, formatModifier, proficiencyBonusForLevel, SKILL_LIST } from '@/domain/abilities';
 import { applyDamage, applyHealing, setTempHp } from '@/domain/hp';
 import { ImageUpload } from '@/features/library/ImageUpload';
+const InlineRichText = lazy(() => import('@/features/editor/InlineRichText').then((m) => ({ default: m.InlineRichText })));
 import { cn } from '@/lib/cn';
 
 /** 플레이어 캐릭터 시트 */
@@ -331,13 +332,14 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
             ] as const
           ).map(([key, label]) => (
             <Field key={key} label={label}>
-              {({ id }) => (
-                <Textarea
-                  id={id}
-                  rows={3}
-                  value={state.sheet[key]}
-                  onChange={(e) => set('sheet', { ...state.sheet, [key]: e.target.value })}
-                />
+              {() => (
+                <Suspense fallback={<div className="rounded-lg border border-[var(--color-border)] p-3 text-sm text-[var(--color-fg-muted)]">편집기를 불러오는 중…</div>}>
+                  <InlineRichText
+                    ariaLabel={label}
+                    value={state.sheet[key]}
+                    onChange={(html) => set('sheet', { ...state.sheet, [key]: html })}
+                  />
+                </Suspense>
               )}
             </Field>
           ))}

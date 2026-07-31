@@ -30,6 +30,7 @@ import { defaultMonsterStats } from '@/data/defaults';
 import { ImageUpload } from './ImageUpload';
 import { cn } from '@/lib/cn';
 
+const InlineRichText = lazy(() => import('@/features/editor/InlineRichText').then((m) => ({ default: m.InlineRichText })));
 const RichTextEditor = lazy(() => import('@/features/editor/RichTextEditor').then((m) => ({ default: m.RichTextEditor })));
 
 interface CardEditorProps {
@@ -526,16 +527,17 @@ function SectionsEditor({
                     />
                   )}
                 </Field>
-                <Field label="설명">
-                  {({ id }) => (
-                    <Textarea
-                      id={id}
-                      rows={3}
-                      value={section.description}
-                      onChange={(e) =>
-                        onChange(sections.map((s, i) => (i === index ? { ...s, description: e.target.value } : s)))
-                      }
-                    />
+                <Field label="설명" hint="굵게(Ctrl+B) · 기울임(Ctrl+I) 등 서식을 쓸 수 있습니다.">
+                  {() => (
+                    <Suspense fallback={<div className="rounded-lg border border-[var(--color-border)] p-3 text-sm text-[var(--color-fg-muted)]">편집기를 불러오는 중…</div>}>
+                      <InlineRichText
+                        ariaLabel="설명"
+                        value={section.description}
+                        onChange={(html) =>
+                          onChange(sections.map((s, i) => (i === index ? { ...s, description: html } : s)))
+                        }
+                      />
+                    </Suspense>
                   )}
                 </Field>
               </div>

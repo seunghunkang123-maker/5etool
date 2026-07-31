@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { docToHtml, docToMarkdown, docToPlainText, escapeHtml, plainTextToDoc, sanitizeHtml } from './sanitize';
+import {
+  docToHtml,
+  docToMarkdown,
+  docToPlainText,
+  escapeHtml,
+  htmlToPlainText,
+  plainTextToDoc,
+  sanitizeHtml,
+  textOrHtmlToHtml,
+} from './sanitize';
 
 describe('sanitizeHtml', () => {
   it('script 태그를 제거한다', () => {
@@ -127,5 +136,50 @@ describe('docToMarkdown', () => {
     const md = docToMarkdown(doc);
     expect(md).toContain('# 제목');
     expect(md).toContain('- 항목');
+  });
+});
+
+describe('textOrHtmlToHtml', () => {
+  it('평문 줄바꿈을 문단과 <br>로 바꾼다', () => {
+    const html = textOrHtmlToHtml('첫 줄\n둘째 줄\n\n다음 문단');
+    expect(html).toContain('<p>첫 줄<br>둘째 줄</p>');
+    expect(html).toContain('<p>다음 문단</p>');
+  });
+
+  it('평문에 든 꺾쇠는 태그로 해석하지 않는다', () => {
+    const html = textOrHtmlToHtml('명중 <10 이면 실패');
+    expect(html).toContain('&lt;10');
+    expect(html).not.toContain('<10');
+  });
+
+  it('이미 HTML이면 그대로 두되 정화한다', () => {
+    const html = textOrHtmlToHtml('<p><strong>굵게</strong></p>');
+    expect(html).toContain('<strong>굵게</strong>');
+  });
+
+  it('HTML 안의 스크립트는 제거한다', () => {
+    const html = textOrHtmlToHtml('<p>안녕<script>alert(1)</script></p>');
+    expect(html).not.toContain('script');
+    expect(html).toContain('안녕');
+  });
+
+  it('빈 값은 빈 문자열', () => {
+    expect(textOrHtmlToHtml('')).toBe('');
+    expect(textOrHtmlToHtml(null)).toBe('');
+    expect(textOrHtmlToHtml('   ')).toBe('');
+  });
+});
+
+describe('htmlToPlainText', () => {
+  it('태그를 걷어내고 줄바꿈으로 바꾼다', () => {
+    expect(htmlToPlainText('<p>첫 줄</p><p>둘째 줄</p>')).toBe('첫 줄\n둘째 줄');
+  });
+
+  it('서식 태그 안의 글자를 살린다', () => {
+    expect(htmlToPlainText('<p><strong>굵은</strong> 글씨</p>')).toBe('굵은 글씨');
+  });
+
+  it('빈 값은 빈 문자열', () => {
+    expect(htmlToPlainText(null)).toBe('');
   });
 });
