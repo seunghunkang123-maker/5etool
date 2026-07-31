@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { BookOpen, Copy, Play, Plus, Settings, Users } from 'lucide-react';
+import { BookOpen, Copy, Play, Plus, Settings, Trash2, Users } from 'lucide-react';
 import { repo } from '@/data';
 import { qk, useCampaign, useMembers, useSessions, useViewer } from '@/hooks/queries';
 import { useCampaignRealtime } from '@/hooks/useRealtime';
@@ -10,6 +10,7 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Field, Input, Textarea } from '@/components/ui/Field';
 import { Badge, CardListSkeleton, EmptyState, ErrorState } from '@/components/ui/feedback';
 import { CAMPAIGN_STATUS_LABELS, SESSION_STATUS_LABELS, type GameSession } from '@/data/types';
+import { confirmAndRun } from '@/components/ui/ConfirmDialog';
 import { isDM, ROLE_LABELS } from '@/domain/permissions';
 import { formatDateTime, fromDateTimeLocal } from '@/lib/format';
 import { toast } from '@/components/ui/Toast';
@@ -27,6 +28,8 @@ export function CampaignPage() {
   useCampaignRealtime(campaignId);
 
   const dm = isDM(viewer);
+  // 세션 삭제는 되돌리기 어려운 작업이라 소유자만 할 수 있다(서버에서도 같은 규칙).
+  const isOwner = viewer?.role === 'owner';
 
   if (isLoading) return <CardListSkeleton rows={3} />;
   if (isError || !campaign) {
@@ -34,6 +37,24 @@ export function CampaignPage() {
   }
 
   const live = sessions.find((s) => s.status === 'live');
+
+  const deleteSession = (session: GameSession) =>
+    confirmAndRun(
+      {
+        title: `"${session.title}" 세션을 삭제할까요?`,
+        description:
+          session.status === 'live'
+            ? '진행 중인 세션입니다. 삭제하면 참가자들이 즉시 나가게 되고, 일시 공개된 자료는 비공개로 돌아갑니다. 30일 안에 휴지통에서 복구할 수 있습니다.'
+            : '세션 기록과 전투 내역이 함께 숨겨집니다. 30일 안에 휴지통에서 복구할 수 있습니다.',
+        confirmLabel: '삭제',
+        danger: true,
+      },
+      async () => {
+        await repo().sessions.remove(session.id);
+        await client.invalidateQueries({ queryKey: qk.sessions(campaignId ?? '') });
+      },
+      '세션을 삭제했습니다.',
+    );
 
   const copyJoinCode = async () => {
     try {
@@ -173,6 +194,17 @@ export function CampaignPage() {
                       세션 시작
                     </Button>
                   ) : null}
+
+                  {isOwner ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`${session.title} 삭제`}
+                      onClick={() => deleteSession(session)}
+                    >
+                      <Trash2 aria-hidden className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -226,7 +258,7 @@ function CreateSessionDialog({ campaignId, onClose }: { campaignId: string; onCl
         status: startNow ? 'preparing' : 'scheduled',
       });
       if (startNow) await repo().sessions.start(session.id);
-      await client.invalidateQueries({ queryKey: qk.sessions(campaignId) });
+      await client.invalidateQueries({ queryKey: qk.sessions(campaignId ?? '') });
       toast.success(startNow ? '세션을 시작했습니다.' : '세션을 만들었습니다.');
       onClose();
       if (startNow) navigate(`/campaigns/${campaignId}/sessions/${session.id}`);

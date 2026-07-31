@@ -225,7 +225,7 @@ export function CampaignSettingsPage() {
       <section>
         <h2 className="mb-3 text-lg font-semibold">휴지통</h2>
         {trash.length === 0 ? (
-          <EmptyState title="휴지통이 비어 있습니다" description="삭제한 카드와 폴더는 30일 동안 여기에 보관됩니다." />
+          <EmptyState title="휴지통이 비어 있습니다" description="삭제한 카드·폴더·세션은 30일 동안 여기에 보관됩니다." />
         ) : (
           <ul className="flex flex-col gap-2">
             {trash.map((item) => (

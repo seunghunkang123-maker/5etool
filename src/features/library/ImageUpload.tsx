@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { ImagePlus, Loader2, X } from 'lucide-react';
 import { repo } from '@/data';
+import { CardImage } from '@/components/ui/CardImage';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { toUserMessage } from '@/lib/errors';
@@ -92,7 +93,7 @@ export function ImageUpload({ campaignId, value, onChange, label = '대표 이�
 
       {value ? (
         <div className="relative overflow-hidden rounded-lg border border-[var(--color-border)]">
-          <img src={value} alt="" className="max-h-56 w-full object-cover" loading="lazy" />
+          <CardImage src={value} alt="" maxHeight={280} className="w-full rounded-none" />
           <Button
             variant="danger"
             size="icon"

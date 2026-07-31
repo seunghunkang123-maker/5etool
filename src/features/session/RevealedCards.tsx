@@ -3,6 +3,7 @@ import { Maximize2, X } from 'lucide-react';
 import { useVisibleCards } from '@/hooks/queries';
 import { EmptyState, Badge } from '@/components/ui/feedback';
 import { Button } from '@/components/ui/Button';
+import { CardImage } from '@/components/ui/CardImage';
 import { Dialog } from '@/components/ui/Dialog';
 import { RichTextView } from '@/features/editor/RichTextView';
 import { HpBar } from '@/components/ui/HpBar';
@@ -37,7 +38,7 @@ export function RevealedCards({ campaignId }: { campaignId: string }) {
               className="flex w-full flex-col gap-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-left"
             >
               {card.image_url ? (
-                <img src={card.image_url} alt={card.name ?? ''} loading="lazy" className="h-40 w-full rounded-lg object-cover" />
+                <CardImage src={card.image_url} alt={card.name ?? ''} maxHeight={200} className="w-full" />
               ) : null}
               <div className="flex items-center gap-2">
                 <span className="font-medium">{card.name ?? '???'}</span>
@@ -63,9 +64,14 @@ function CardDetailDialog({ card, onClose }: { card: VisibleCard; onClose: () =>
     <Dialog open onClose={onClose} title={card.name ?? '공개된 자료'} size="lg">
       <div className="flex flex-col gap-4">
         {card.image_url ? (
-          <button type="button" onClick={() => setZoomed(true)} className="overflow-hidden rounded-lg" aria-label="이미지 확대">
-            <img src={card.image_url} alt={card.name ?? ''} className="w-full object-contain" />
-          </button>
+          <CardImage
+            src={card.image_url}
+            alt={card.name ?? ''}
+            maxHeight={420}
+            className="w-full"
+            clickLabel="이미지 확대"
+            onClick={() => setZoomed(true)}
+          />
         ) : null}
 
         {card.summary ? <p className="text-sm text-[var(--color-fg-muted)]">{card.summary}</p> : null}

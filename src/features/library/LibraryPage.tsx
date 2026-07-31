@@ -31,6 +31,8 @@ import { plainTextToDoc } from '@/domain/sanitize';
 import { FolderTree } from './FolderTree';
 import { RevealDialog } from './RevealControl';
 import { CardEditor } from './CardEditor';
+import { ConditionReferenceDialog } from '@/features/conditions/ConditionReferenceDialog';
+import { useConditionReference } from '@/stores/conditionReference';
 import { cn } from '@/lib/cn';
 
 const MonsterGeneratorDialog = lazy(() => import('@/features/ai/MonsterGeneratorDialog').then((m) => ({ default: m.MonsterGeneratorDialog })));
@@ -232,6 +234,10 @@ export function LibraryPage() {
             </Button>
             {canEdit ? (
               <>
+                <Button variant="secondary" onClick={() => useConditionReference.getState().show()}>
+                  <Sparkles aria-hidden className="h-4 w-4" />
+                  상태 도감
+                </Button>
                 <Button variant="secondary" onClick={() => setGenerating(true)}>
                   <Wand2 aria-hidden className="h-4 w-4" />
                   AI 몬스터
@@ -383,6 +389,8 @@ export function LibraryPage() {
         </div>
       </div>
 
+      <ConditionReferenceDialog campaignId={campaignId} />
+
       {editing ? <CardEditor card={editing} campaignId={campaignId} onClose={() => { setEditing(null); refresh(); }} /> : null}
 
       {revealing ? (
@@ -493,7 +501,12 @@ function CardRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left"
       >
         {card.image_url ? (
-          <img src={card.image_url} alt="" loading="lazy" className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+          <img
+            src={card.image_url}
+            alt=""
+            loading="lazy"
+            className="h-11 w-11 shrink-0 rounded-lg bg-[var(--color-surface-3)] object-contain"
+          />
         ) : (
           <span aria-hidden className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-3)] text-xs text-[var(--color-fg-muted)]">
             {CARD_TYPE_LABELS[card.type].slice(0, 2)}

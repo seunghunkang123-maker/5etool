@@ -607,10 +607,9 @@ export function createSupabaseRepository(): Repository {
         return unwrap(await sb().rpc('end_session', { p_session_id: id }).select().single(), '세션을 종료하지 못했습니다.') as GameSession;
       },
       async remove(id) {
-        unwrapVoid(
-          await sb().from('sessions').update({ deleted_at: new Date().toISOString() }).eq('id', id),
-          '세션을 삭제하지 못했습니다.',
-        );
+        // 소유자만 지울 수 있고, 휴지통에 남긴다. 권한 판정은 서버 함수가 한다.
+        const { error } = await sb().rpc('soft_delete_session', { p_session_id: id });
+        if (error) throw toAppError(error, '세션을 삭제하지 못했습니다.');
       },
       async participants(id) {
         return unwrap(

@@ -113,6 +113,7 @@ supabase db push
 | `0005_seed_conditions.sql` | 5판 기본 상태이상, 기본 카드 템플릿 |
 | `0006_grants.sql` | 역할별 GRANT, 운영 전용 열 보호 |
 | `0007_condition_stacks.sql` | 상태 효과 스택, 캠페인 전용 상태 라이브러리 |
+| `0008_session_delete.sql` | 세션 삭제(소유자 전용, 휴지통 복구) |
 
 ### 4) 인증 설정
 
@@ -248,9 +249,9 @@ Redirect URL(`https://<프로젝트>.vercel.app/**`)을 등록합니다.
 ```
 npm run typecheck   통과 (오류 0)
 npm run lint        통과 (경고 0)
-npm run test        24개 파일 / 284개 테스트 통과
+npm run test        24개 파일 / 288개 테스트 통과
 npm run build       통과 (코드 분할된 청크로 빌드)
-npm run test:e2e    3개 시나리오 통과 (전체 세션 흐름 / 설정 화면 / 상태 도감)
+npm run test:e2e    4개 시나리오 통과 (전체 세션 흐름 / 설정 / 상태 도감 / 보관함·세션 관리)
 ./supabase/test/run_checks.sh
                     마이그레이션 6개 적용 + RLS 검사 전부 통과
 정적 빌드 스모크   통과 — dist/를 Vercel과 같은 방식(파일 우선, 없으면 index.html)으로

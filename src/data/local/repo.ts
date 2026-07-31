@@ -865,6 +865,9 @@ export function createLocalRepository(): Repository {
         } else if (item.entity_type === 'folder') {
           const folder = db().folders.find((f) => f.id === item.entity_id);
           if (folder) folder.deleted_at = null;
+        } else if (item.entity_type === 'session') {
+          const session = db().sessions.find((s) => s.id === item.entity_id);
+          if (session) session.deleted_at = null;
         }
         const data = db();
         data.deletedItems = data.deletedItems.filter((d) => d.id !== itemId);
@@ -989,8 +992,34 @@ export function createLocalRepository(): Repository {
         const session = campaignOfSession(id);
         const viewer = viewerOf(session.campaign_id);
         assert(isOwner(viewer), '세션을 삭제할 권한이 없습니다.');
+        if (session.deleted_at) return; // 이미 지워진 세션
+
+        // 진행 중인 세션을 지우면 일시 공개된 자료가 공개된 채로 남는다. 먼저 정리한다.
+        for (const card of db().cards) {
+          if (card.campaign_id === session.campaign_id && card.is_temporary_reveal) {
+            card.reveal_scope = card.previous_scope ?? 'hidden';
+            card.is_temporary_reveal = false;
+            card.previous_scope = null;
+          }
+        }
+
         session.deleted_at = nowISO();
+        if (session.status === 'live') session.status = 'cancelled';
+
+        db().deletedItems.push({
+          id: uid(),
+          campaign_id: session.campaign_id,
+          entity_type: 'session',
+          entity_id: session.id,
+          label: session.title || '제목 없는 세션',
+          payload: session as unknown as Record<string, unknown>,
+          deleted_by: viewer.userId,
+          deleted_at: nowISO(),
+          purge_after: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+
         localStore.commit(makeEvent('sessions', 'UPDATE', session as unknown as Record<string, unknown>));
+        pushAudit(session.campaign_id, 'session.delete', { title: session.title, session_number: session.session_number });
       },
       async participants(id) {
         const session = campaignOfSession(id);

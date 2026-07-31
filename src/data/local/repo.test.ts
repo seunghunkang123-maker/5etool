@@ -351,4 +351,51 @@ describe('데모 저장소 어댑터', () => {
       expect(list[0]?.conditions ?? []).toHaveLength(0);
     });
   });
+  describe('세션 삭제', () => {
+    it('소유자는 세션을 지우고 휴지통에서 되살릴 수 있다', async () => {
+      const campaign = await signUpDM();
+      const session = await repo().sessions.create(campaign.id, { title: '지울 세션' });
+
+      await repo().sessions.remove(session.id);
+      expect(await repo().sessions.list(campaign.id)).toHaveLength(0);
+
+      const trash = await repo().campaigns.trash(campaign.id);
+      const item = trash.find((d) => d.entity_type === 'session');
+      expect(item?.label).toBe('지울 세션');
+
+      await repo().campaigns.restoreItem(item!.id);
+      expect(await repo().sessions.list(campaign.id)).toHaveLength(1);
+    });
+
+    it('진행 중인 세션을 지우면 일시 공개 자료가 되돌아간다', async () => {
+      const campaign = await signUpDM();
+      const card = await repo().library.createCard(campaign.id, { type: 'handout', name: '지도' });
+      const session = await repo().sessions.create(campaign.id, { title: '진행 세션' });
+      await repo().sessions.start(session.id);
+      await repo().library.setReveal(card.id, { scope: 'full', temporary: true, sessionId: session.id });
+      expect((await repo().library.card(card.id)).reveal_scope).toBe('full');
+
+      await repo().sessions.remove(session.id);
+      expect((await repo().library.card(card.id)).reveal_scope).toBe('hidden');
+    });
+
+    it('플레이어는 세션을 삭제할 수 없다', async () => {
+      const campaign = await signUpDM();
+      const session = await repo().sessions.create(campaign.id, { title: '보호된 세션' });
+      await addPlayer(campaign.join_code);
+
+      await expect(repo().sessions.remove(session.id)).rejects.toThrow(/권한이 없습니다/);
+    });
+
+    it('같은 세션을 두 번 지워도 휴지통 항목이 늘지 않는다', async () => {
+      const campaign = await signUpDM();
+      const session = await repo().sessions.create(campaign.id, { title: '중복 삭제' });
+
+      await repo().sessions.remove(session.id);
+      await repo().sessions.remove(session.id);
+
+      const trash = await repo().campaigns.trash(campaign.id);
+      expect(trash.filter((d) => d.entity_type === 'session')).toHaveLength(1);
+    });
+  });
 });

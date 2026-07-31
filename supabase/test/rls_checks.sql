@@ -667,6 +667,67 @@ begin
 end
 $$;
 
+-- ── 세션 삭제 ───────────────────────────────────────────────────────
+-- 소유자만 지울 수 있고, 휴지통에 남아 복구할 수 있어야 한다.
+do $$
+declare
+  v_session uuid;
+  v_item    uuid;
+begin
+  insert into public.sessions (campaign_id, title, session_number)
+  values (current_setting('test.campaign')::uuid, '삭제 검증 세션', 99)
+  returning id into v_session;
+  perform set_config('test.delete_session', v_session::text, false);
+end
+$$;
+
+-- 플레이어는 삭제할 수 없다.
+select set_config('request.jwt.claim.sub', current_setting('test.player'), false);
+do $$
+begin
+  begin
+    perform public.soft_delete_session(current_setting('test.delete_session')::uuid);
+    raise exception '검사 실패: 플레이어가 세션을 삭제할 수 있었습니다.';
+  exception when insufficient_privilege then
+    null;
+  end;
+end
+$$;
+select set_config('request.jwt.claim.sub', current_setting('test.dm'), false);
+
+do $$
+declare
+  v_item uuid;
+  v_rows integer;
+begin
+  perform public.soft_delete_session(current_setting('test.delete_session')::uuid);
+
+  if (select deleted_at from public.sessions where id = current_setting('test.delete_session')::uuid) is null then
+    raise exception '검사 실패: 세션이 삭제 표시되지 않았습니다.';
+  end if;
+
+  select id into v_item from public.deleted_items
+   where entity_type = 'session' and entity_id = current_setting('test.delete_session')::uuid;
+  if v_item is null then
+    raise exception '검사 실패: 삭제한 세션이 휴지통에 없습니다.';
+  end if;
+
+  -- 두 번 호출해도 휴지통 항목이 늘지 않는다.
+  perform public.soft_delete_session(current_setting('test.delete_session')::uuid);
+  select count(*) into v_rows from public.deleted_items
+   where entity_type = 'session' and entity_id = current_setting('test.delete_session')::uuid;
+  if v_rows <> 1 then
+    raise exception '검사 실패: 중복 삭제로 휴지통 항목이 늘었습니다. (%)', v_rows;
+  end if;
+
+  -- 복구되어야 한다.
+  perform public.restore_deleted_item(v_item);
+  if (select deleted_at from public.sessions where id = current_setting('test.delete_session')::uuid) is not null then
+    raise exception '검사 실패: 세션이 복구되지 않았습니다.';
+  end if;
+end
+$$;
+
 -- ── 다른 캠페인 격리 ────────────────────────────────────────────────
 do $$
 declare
