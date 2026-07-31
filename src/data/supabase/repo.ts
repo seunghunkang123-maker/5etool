@@ -997,15 +997,34 @@ export function createSupabaseRepository(): Repository {
         ) as Encounter;
       },
       async combatants(encounterId) {
-        const rows = (unwrap(
-          await sb()
-            .from('encounter_combatants')
-            .select('*, conditions:combatant_conditions(*)')
-            .eq('encounter_id', encounterId)
-            .order('sort_order'),
-          '전투 참가자를 불러오지 못했습니다.',
-        ) as (Combatant & { conditions: CombatantCondition[] })[]) ?? [];
-        return rows;
+        // 상태 효과를 PostgREST 임베드(`conditions:combatant_conditions(*)`)로 가져오면 안 된다.
+        // combatant_conditions에는 encounter_combatants를 가리키는 외래 키가 둘(combatant_id,
+        // source_combatant_id) 있어서 PostgREST가 어느 쪽인지 정하지 못하고 요청 전체가 실패한다.
+        // 두 번 나눠 조회해 직접 이어 붙인다.
+        const rows =
+          (unwrap(
+            await sb().from('encounter_combatants').select('*').eq('encounter_id', encounterId).order('sort_order'),
+            '전투 참가자를 불러오지 못했습니다.',
+          ) as Combatant[]) ?? [];
+        if (rows.length === 0) return [];
+
+        const conditions =
+          (unwrap(
+            await sb()
+              .from('combatant_conditions')
+              .select('*')
+              .in('combatant_id', rows.map((row) => row.id))
+              .order('created_at'),
+            '상태 효과를 불러오지 못했습니다.',
+          ) as CombatantCondition[]) ?? [];
+
+        const byCombatant = new Map<UUID, CombatantCondition[]>();
+        for (const condition of conditions) {
+          const list = byCombatant.get(condition.combatant_id);
+          if (list) list.push(condition);
+          else byCombatant.set(condition.combatant_id, [condition]);
+        }
+        return rows.map((row) => ({ ...row, conditions: byCombatant.get(row.id) ?? [] }));
       },
       async addCombatant(encounterId, input) {
         if (!encounterId) throw new AppError('먼저 전투를 만들어 주세요.', 'validation');

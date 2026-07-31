@@ -143,6 +143,37 @@ test.describe('전투 진행', () => {
     await page.getByRole('dialog').getByRole('button', { name: '제거', exact: true }).click();
     await expect(page.getByTestId('combatant-고블린 3')).toHaveCount(0);
 
+    // ── 세션을 벗어나지 않고 몬스터 만들고 고치기 ─────────────
+    await page.getByRole('button', { name: '새 카드', exact: true }).click();
+    const newCard = page.getByRole('dialog', { name: '새 카드' });
+    await newCard.getByLabel('카드 이름').fill('세션 중 드레이크');
+    await newCard.getByRole('button', { name: '만들기', exact: true }).click();
+
+    // 만들자마자 편집 창이 열린다.
+    const editor = page.getByRole('dialog', { name: '카드 편집' });
+    await expect(editor).toBeVisible();
+    await editor.getByRole('tab', { name: '능력치' }).click();
+    await editor.getByLabel('최대 HP').fill('66');
+    await editor.getByRole('button', { name: '저장', exact: true }).click();
+    await page.getByRole('button', { name: '닫기', exact: true }).last().click();
+    await expect(editor).toBeHidden();
+
+    // 목록에서 이름을 눌러 다시 열면 값이 남아 있다.
+    await page.getByTestId('edit-세션 중 드레이크').click();
+    await expect(editor).toBeVisible();
+    await editor.getByRole('tab', { name: '능력치' }).click();
+    await expect(editor.getByLabel('최대 HP')).toHaveValue('66');
+    await page.getByRole('button', { name: '닫기', exact: true }).last().click();
+    await expect(editor).toBeHidden();
+
+    // 고친 값 그대로 전투에 들어간다.
+    await page.getByRole('button', { name: '세션 중 드레이크 전투에 추가' }).click();
+    // 같은 문구가 세션 로그에도 남으므로 알림 영역으로 한정한다.
+    await expect(
+      page.getByLabel('알림', { exact: true }).getByText('세션 중 드레이크을(를) 전투에 추가했습니다.'),
+    ).toBeVisible();
+    await expect(page.getByTestId('combatant-세션 중 드레이크')).toContainText('66');
+
     // ── 전투 종료 ─────────────────────────────────────────────
     await page.getByRole('button', { name: '전투 종료', exact: true }).click();
     await page.getByRole('button', { name: '전투 종료', exact: true }).last().click();
