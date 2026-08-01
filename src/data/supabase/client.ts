@@ -89,6 +89,11 @@ export function toAppError(error: PostgrestErrorLike | null | undefined, fallbac
   if (code === '23502') {
     return new AppError('빠진 항목이 있습니다. 필수 값을 모두 채워 주세요.', 'validation', error);
   }
+  // 22P02 = 값의 형식이 열 타입과 맞지 않음(빈 문자열을 uuid 열에 넣는 등).
+  // 사용자가 고칠 수 있는 문제가 아니므로 원문을 함께 남겨 원인을 알 수 있게 한다.
+  if (code === '22P02' || code === '22007' || code === '22003') {
+    return new AppError(`보낸 값의 형식이 올바르지 않습니다. (${error.message})`, 'validation', error);
+  }
   // P0001/P0002는 이 프로젝트의 SQL 함수가 직접 올린 오류다.
   // 함수가 한국어 메시지를 담아 던지므로 그대로 보여 준다.
   if (code === 'P0001' || code === 'P0002') {

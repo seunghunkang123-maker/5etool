@@ -104,6 +104,18 @@ export interface CardInput {
   sections?: Omit<CardSection, 'id' | 'card_id'>[];
 }
 
+/**
+ * 카드 수정 입력.
+ *
+ * sections는 반드시 id 없이 보낸다. 저장할 때 기존 행을 지우고 새로 넣기 때문에
+ * 호출부가 id를 만들어 낼 이유가 없다. (예전에는 Partial<Card>를 받아 CardSection의
+ * id가 필수였고, 화면에서 빈 문자열을 채워 보내다가 uuid 열에 ''가 들어가
+ * "invalid input syntax for type uuid" 로 저장이 통째로 실패했다.)
+ */
+export type CardPatch = Partial<Omit<Card, 'sections'>> & {
+  sections?: Omit<CardSection, 'id' | 'card_id'>[];
+};
+
 export interface RevealInput {
   scope: RevealScope;
   fields?: RevealableField[];
@@ -278,7 +290,7 @@ export interface Repository {
     visibleCards(campaignId: UUID): Promise<VisibleCard[]>;
     card(id: UUID): Promise<Card>;
     createCard(campaignId: UUID, input: CardInput): Promise<Card>;
-    updateCard(id: UUID, patch: Partial<Card>, expectedVersion?: number): Promise<Card>;
+    updateCard(id: UUID, patch: CardPatch, expectedVersion?: number): Promise<Card>;
     duplicateCard(id: UUID): Promise<Card>;
     deleteCard(id: UUID): Promise<void>;
     restoreCard(id: UUID): Promise<void>;

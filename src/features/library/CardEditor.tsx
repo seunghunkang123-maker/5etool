@@ -85,7 +85,7 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
   const draft = useMemo(() => loadDraft<EditorState>(`card:${card.id}`), [card.id]);
   const [draftOffered, setDraftOffered] = useState(Boolean(draft));
 
-  const { status, saveNow } = useAutosave<EditorState>({
+  const { status, error: saveError, saveNow } = useAutosave<EditorState>({
     draftKey: `card:${card.id}`,
     value: state,
     onSave: async (value) => {
@@ -98,7 +98,8 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
         dm_notes: value.dm_notes,
         tag_ids: value.tag_ids,
         ...(value.stats ? { stats: value.stats as MonsterStats } : {}),
-        sections: value.sections.map((s, i) => ({ ...s, id: '', card_id: card.id, sort_order: i })),
+        // id는 보내지 않는다. 저장할 때 기존 행을 지우고 새로 넣으므로 서버가 만든다.
+        sections: value.sections.map((s, i) => ({ ...s, sort_order: i })),
       };
 
       const write = async () => {
@@ -111,18 +112,22 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
       try {
         await write();
       } catch (error) {
+        // 카드 본문은 이미 저장되고 뒤 단계(행동·태그)에서 실패했을 수 있다.
+        // 그러면 서버 버전만 올라가 있어서, 그냥 두면 다음 저장까지 연달아 실패한다.
+        // 어떤 이유로 실패했든 서버 버전을 다시 읽어 맞춰 둔다.
+        const server = await repo().library.card(card.id).catch(() => null);
+        if (server) setVersion(server.version);
+
         if (!isConflict(error)) throw error;
 
         // 버전이 어긋났다. 서버 내용이 내가 마지막으로 저장한 것과 같다면
-        // 다른 사람이 고친 것이 아니라 내 저장이 겹친 것이므로 조용히 맞추고 다시 보낸다.
-        const server = await repo().library.card(card.id);
-        if (JSON.stringify(toState(server)) === JSON.stringify(lastSavedRef.current)) {
-          setVersion(server.version);
+        // 다른 사람이 고친 것이 아니라 내 저장이 겹친 것이므로 조용히 다시 보낸다.
+        if (server && JSON.stringify(toState(server)) === JSON.stringify(lastSavedRef.current)) {
           await write();
           lastSavedRef.current = value;
           return;
         }
-        setConflict(server);
+        if (server) setConflict(server);
         throw error;
       }
       lastSavedRef.current = value;
@@ -151,7 +156,7 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
       disableBackdropClose
       footer={
         <>
-          <SaveIndicator status={status} />
+          <SaveIndicator status={status} error={saveError} />
           <Button variant="ghost" onClick={onClose}>
             닫기
           </Button>
@@ -303,7 +308,7 @@ export function CardEditor({ card, campaignId, onClose }: CardEditorProps) {
   );
 }
 
-function SaveIndicator({ status }: { status: ReturnType<typeof useAutosave>['status'] }) {
+function SaveIndicator({ status, error }: { status: ReturnType<typeof useAutosave>['status']; error: string | null }) {
   if (status === 'idle') return <span className="mr-auto" />;
   const icons = {
     dirty: <span aria-hidden className="h-2 w-2 rounded-full bg-[var(--color-warning)]" />,
@@ -313,10 +318,18 @@ function SaveIndicator({ status }: { status: ReturnType<typeof useAutosave>['sta
     offline: <CloudOff aria-hidden className="h-3.5 w-3.5 text-[var(--color-warning)]" />,
     idle: null,
   } as const;
+  const failed = status === 'error' || status === 'offline';
   return (
-    <span role="status" aria-live="polite" className="mr-auto flex items-center gap-1.5 text-xs text-[var(--color-fg-muted)]">
+    <span
+      role="status"
+      aria-live="polite"
+      className={cn('mr-auto flex min-w-0 items-center gap-1.5 text-xs', failed ? 'text-[var(--color-danger)]' : 'text-[var(--color-fg-muted)]')}
+    >
       {icons[status]}
-      {SAVE_STATUS_LABELS[status]}
+      {/* 왜 실패했는지 알려 주지 않으면 사용자가 할 수 있는 일이 없다. */}
+      <span className="truncate" title={failed && error ? error : undefined}>
+        {failed && error ? `${SAVE_STATUS_LABELS[status]} — ${error}` : SAVE_STATUS_LABELS[status]}
+      </span>
     </span>
   );
 }

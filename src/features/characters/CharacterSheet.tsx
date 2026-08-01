@@ -32,7 +32,7 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
     queryFn: () => repo().characters.resources(character.id),
   });
 
-  const { status } = useAutosave<PlayerCharacter>({
+  const { status, error: saveError } = useAutosave<PlayerCharacter>({
     draftKey: `character:${character.id}`,
     value: state,
     onSave: async (value) => {
@@ -118,8 +118,19 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
       disableBackdropClose
       footer={
         <>
-          <span role="status" aria-live="polite" className="mr-auto text-xs text-[var(--color-fg-muted)]">
-            {SAVE_STATUS_LABELS[status]}
+          {/* 실패했으면 이유까지 보여 준다. "저장 실패"만 뜨면 할 수 있는 일이 없다. */}
+          <span
+            role="status"
+            aria-live="polite"
+            className={cn(
+              'mr-auto min-w-0 truncate text-xs',
+              status === 'error' || status === 'offline' ? 'text-[var(--color-danger)]' : 'text-[var(--color-fg-muted)]',
+            )}
+            title={saveError ?? undefined}
+          >
+            {(status === 'error' || status === 'offline') && saveError
+              ? `${SAVE_STATUS_LABELS[status]} — ${saveError}`
+              : SAVE_STATUS_LABELS[status]}
           </span>
           <Button variant="secondary" onClick={() => void rest('short')}>
             <Coffee aria-hidden className="h-4 w-4" />

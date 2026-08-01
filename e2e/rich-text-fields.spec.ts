@@ -55,6 +55,19 @@ test.describe('특성·장비 서식', () => {
     await editorDialog.getByRole('button', { name: '굵게' }).last().click();
 
     await editorDialog.getByRole('button', { name: '저장', exact: true }).click();
+    await expect(editorDialog.getByRole('status')).toContainText('저장 완료');
+
+    // 특성이 있는 카드를 연달아 저장해도 실패하지 않는다.
+    // (행동 행을 id 없이 보내야 한다. 예전에는 빈 문자열 id 때문에 두 번째 저장부터
+    //  "저장 실패" → "다른 사용자가 먼저 내용을 수정했습니다"로 이어졌다.)
+    for (const name of ['화염 숨결 2', '화염 숨결 3', '화염 숨결']) {
+      await editorDialog.getByLabel('이름').last().fill(name);
+      await editorDialog.getByRole('button', { name: '저장', exact: true }).click();
+      await expect(editorDialog.getByRole('status')).toContainText('저장 완료');
+      await expect(editorDialog.getByRole('status')).not.toContainText('실패');
+    }
+    await expect(dmPage.getByText('다른 사용자가 먼저')).toHaveCount(0);
+
     await dmPage.getByRole('button', { name: '닫기', exact: true }).last().click();
     await expect(editorDialog).toBeHidden();
 

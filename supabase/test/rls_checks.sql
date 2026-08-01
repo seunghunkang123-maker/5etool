@@ -309,6 +309,35 @@ begin
 end
 $$;
 
+-- 카드 행동/특성 저장. id 없이 넣으면 서버가 만들어 준다.
+-- (빈 문자열을 id로 보내면 uuid 변환에서 실패해 카드 저장 전체가 무너졌다.)
+do $$
+declare
+  v_card  uuid := current_setting('test.card')::uuid;
+  v_rows  integer;
+begin
+  delete from public.card_sections where card_id = v_card;
+  insert into public.card_sections (card_id, kind, name, description, sort_order)
+  values (v_card, 'trait', '화염 숨결', '뜨겁다', 0),
+         (v_card, 'action', '물기', '', 1);
+
+  select count(*) into v_rows from public.card_sections where card_id = v_card;
+  if v_rows <> 2 then
+    raise exception '검사 실패: 행동을 저장하지 못했습니다. rows=%', v_rows;
+  end if;
+
+  -- id에 빈 문자열을 넣으면 거부된다.
+  begin
+    execute format('insert into public.card_sections (id, card_id, kind, name) values (%L, %L, %L, %L)', '', v_card, 'trait', 'x');
+    raise exception '검사 실패: 빈 문자열 id가 저장되었습니다.';
+  exception
+    when invalid_text_representation then null;
+  end;
+
+  delete from public.card_sections where card_id = v_card;
+end
+$$;
+
 -- 같은 상태를 다시 적용하면 스택이 쌓인다(0007 마이그레이션).
 do $$
 declare

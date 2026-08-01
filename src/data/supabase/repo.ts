@@ -59,6 +59,21 @@ import { applyDamage, applyHealing, setMaxHp, setTempHp } from '@/domain/hp';
 
 const CARD_SELECT = '*, card_tags(tag_id), monster_stats(*), card_sections(*)';
 
+/**
+ * 행동/특성 행을 만든다.
+ *
+ * id는 절대 넘기지 않는다. 저장할 때 기존 행을 지우고 새로 넣으므로 서버가 만들면 된다.
+ * 예전에는 화면이 타입을 맞추려고 id에 빈 문자열을 채워 보냈고, uuid 열에 ''가 들어가
+ * "invalid input syntax for type uuid" 로 카드 저장이 통째로 실패했다.
+ * (그러면 cards 행의 버전만 올라가 다음 저장은 충돌로 이어졌다.)
+ */
+export function sectionRows(cardId: UUID, sections: readonly Partial<CardSection>[]): Row[] {
+  return sections.map((section, index) => {
+    const { id: _id, card_id: _cardId, sort_order: _sortOrder, ...rest } = section;
+    return { ...rest, card_id: cardId, sort_order: index };
+  });
+}
+
 type Row = Record<string, unknown>;
 
 interface CardRow extends Row {
@@ -810,9 +825,13 @@ export function createSupabaseRepository(): Repository {
           throw new AppError('다른 사용자가 먼저 내용을 수정했습니다. 변경 사항을 비교해 주세요.', 'conflict');
         }
         if (tagIds) {
-          await sb().from('card_tags').delete().eq('card_id', id);
+          // 오류를 삼키면 태그만 조용히 사라진다.
+          unwrapVoid(await sb().from('card_tags').delete().eq('card_id', id), '태그를 저장하지 못했습니다.');
           if (tagIds.length > 0) {
-            await sb().from('card_tags').insert(tagIds.map((tagId) => ({ card_id: id, tag_id: tagId })));
+            unwrapVoid(
+              await sb().from('card_tags').insert(tagIds.map((tagId) => ({ card_id: id, tag_id: tagId }))),
+              '태그를 저장하지 못했습니다.',
+            );
           }
         }
         if (stats) await this.setStats(id, stats as Omit<MonsterStats, 'card_id'>);
@@ -862,12 +881,12 @@ export function createSupabaseRepository(): Repository {
         }
       },
       async setSections(cardId, sections) {
-        await sb().from('card_sections').delete().eq('card_id', cardId);
+        unwrapVoid(await sb().from('card_sections').delete().eq('card_id', cardId), '행동 정보를 저장하지 못했습니다.');
         if (sections.length === 0) return [];
         return unwrap(
           await sb()
             .from('card_sections')
-            .insert(sections.map((s, i) => ({ ...s, card_id: cardId, sort_order: i })))
+            .insert(sectionRows(cardId, sections))
             .select(),
           '행동 정보를 저장하지 못했습니다.',
         ) as CardSection[];
