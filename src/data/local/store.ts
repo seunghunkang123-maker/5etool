@@ -171,7 +171,8 @@ class LocalStore {
    * 리비전으로 중복을 제거해 같은 변경이 두 번 처리되지 않게 한다.
    *   1) BroadcastChannel — 즉시 전달
    *   2) storage 이벤트 — 다른 탭의 localStorage 쓰기를 감지
-   *   3) 주기적 확인 — 위 두 경로가 모두 실패했을 때의 마지막 안전망
+   *   3) 화면에 다시 나타날 때 확인 — 배경 탭은 타이머가 크게 느려진다
+   *   4) 주기적 확인 — 위 경로가 모두 실패했을 때의 마지막 안전망
    */
   private attachCrossTabSync(): void {
     if (typeof BroadcastChannel !== 'undefined' && !this.channel) {
@@ -185,6 +186,17 @@ class LocalStore {
       const storageEvent = event as StorageEvent;
       if (storageEvent.key === REV_KEY || storageEvent.key === DB_KEY) this.handleRemoteChange();
     });
+
+    // 배경에 있던 탭은 브라우저가 setInterval을 1분 수준까지 늦춘다.
+    // 그동안 온 알림을 놓쳤다면 화면으로 돌아온 순간 곧바로 확인해야
+    // 다시 볼 때 옛 라운드가 떠 있지 않다.
+    const recheck = () => {
+      if (globalThis.document?.visibilityState === 'hidden') return;
+      this.handleRemoteChange();
+    };
+    globalThis.document?.addEventListener?.('visibilitychange', recheck);
+    globalThis.addEventListener?.('focus', recheck);
+    globalThis.addEventListener?.('pageshow', recheck);
 
     if (this.pollTimer === null && typeof setInterval === 'function') {
       this.pollTimer = setInterval(() => this.handleRemoteChange(), POLL_INTERVAL_MS) as unknown as number;

@@ -59,12 +59,16 @@ export function InlineRichText({
   });
 
   // 바깥에서 값이 바뀌면(다른 카드 선택 등) 편집기 내용을 맞춘다.
+  //
+  // 편집 중에는 절대 건드리지 않는다. 내용을 다시 넣으면 커서가 처음으로 돌아가고,
+  // 한글 조합 중이면 조합까지 끊겨 휴대폰에서 커서가 튄다.
+  // isFocused만으로는 부족하다. 조합 중에 잠깐 포커스가 빠진 것으로 보고되는
+  // 경우가 있어 조합 상태도 함께 본다.
   useEffect(() => {
     if (!editor) return;
+    if (editor.isFocused || editor.view.composing) return;
     const next = textOrHtmlToHtml(value);
-    if (next !== editor.getHTML() && !editor.isFocused) {
-      editor.commands.setContent(next, false);
-    }
+    if (next !== editor.getHTML()) editor.commands.setContent(next, false);
   }, [editor, value]);
 
   if (!editor) {

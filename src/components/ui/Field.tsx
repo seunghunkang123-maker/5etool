@@ -1,4 +1,5 @@
 import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { useImeInput } from '@/hooks/useImeInput';
 import { cn } from '@/lib/cn';
 
 const CONTROL =
@@ -51,17 +52,22 @@ export function Field({ label, hint, error, required, children, className }: Fie
 }
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
-  { className, ...props },
+  { className, value, onChange, ...props },
   ref,
 ) {
-  return <input ref={ref} className={cn(CONTROL, className)} {...props} />;
+  // 한글 조합 중에 커서가 튀지 않도록 조합이 끝난 뒤에 값을 올려보낸다.
+  const ime = useImeInput<HTMLInputElement>(value, onChange);
+  return <input ref={ref} className={cn(CONTROL, className)} value={value} onChange={onChange} {...props} {...ime} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
-  { className, ...props },
+  { className, value, onChange, ...props },
   ref,
 ) {
-  return <textarea ref={ref} className={cn(CONTROL, 'min-h-24 resize-y', className)} {...props} />;
+  const ime = useImeInput<HTMLTextAreaElement>(value, onChange);
+  return (
+    <textarea ref={ref} className={cn(CONTROL, 'min-h-24 resize-y', className)} value={value} onChange={onChange} {...props} {...ime} />
+  );
 });
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(

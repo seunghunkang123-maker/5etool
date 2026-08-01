@@ -309,6 +309,41 @@ begin
 end
 $$;
 
+-- 긴 휴식은 주문 슬롯을 모두 되돌린다(0009 마이그레이션).
+do $$
+declare
+  v_char  uuid;
+  v_slots jsonb;
+begin
+  insert into public.player_characters (campaign_id, user_id, name, sheet)
+  values (
+    current_setting('test.campaign')::uuid,
+    current_setting('test.player')::uuid,
+    '휴식 시험 캐릭터',
+    jsonb_build_object('spell_slots', '[{"level":1,"max":4,"current":1},{"level":2,"max":3,"current":0}]'::jsonb)
+  )
+  returning id into v_char;
+
+  perform public.apply_rest(v_char, 'short');
+  select sheet -> 'spell_slots' into v_slots from public.player_characters where id = v_char;
+  if (v_slots -> 0 ->> 'current')::int <> 1 then
+    raise exception '검사 실패: 짧은 휴식이 주문 슬롯을 되돌렸습니다. %', v_slots;
+  end if;
+
+  perform public.apply_rest(v_char, 'long');
+  select sheet -> 'spell_slots' into v_slots from public.player_characters where id = v_char;
+  if (v_slots -> 0 ->> 'current')::int <> 4 or (v_slots -> 1 ->> 'current')::int <> 3 then
+    raise exception '검사 실패: 긴 휴식이 주문 슬롯을 되돌리지 않았습니다. %', v_slots;
+  end if;
+
+  -- 주문 슬롯이 없는 캐릭터도 긴 휴식이 그냥 지나가야 한다.
+  update public.player_characters set sheet = '{}'::jsonb where id = v_char;
+  perform public.apply_rest(v_char, 'long');
+
+  delete from public.player_characters where id = v_char;
+end
+$$;
+
 -- 카드 행동/특성 저장. id 없이 넣으면 서버가 만들어 준다.
 -- (빈 문자열을 id로 보내면 uuid 변환에서 실패해 카드 저장 전체가 무너졌다.)
 do $$

@@ -1565,6 +1565,11 @@ export function createLocalRepository(): Repository {
           character.hp = character.max_hp;
           character.temp_hp = 0;
           character.death_saves = { successes: 0, failures: 0 };
+          // 주문 슬롯은 긴 휴식으로 모두 회복된다.
+          character.sheet = {
+            ...character.sheet,
+            spell_slots: character.sheet.spell_slots.map((slot) => ({ ...slot, current: slot.max })),
+          };
         }
         character.updated_at = nowISO();
         localStore.commit(makeEvent('player_characters', 'UPDATE', character as unknown as Record<string, unknown>));

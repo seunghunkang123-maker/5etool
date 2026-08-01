@@ -130,11 +130,13 @@ export function normalizeSheet(value: unknown): CharacterSheetExtra {
     ? raw.spell_slots
         .filter((slot): slot is { level: number; current: number; max: number } =>
           typeof slot === 'object' && slot !== null && typeof (slot as { level?: unknown }).level === 'number')
-        .map((slot) => ({
-          level: slot.level,
-          max: typeof slot.max === 'number' ? Math.max(0, slot.max) : 0,
-          current: typeof slot.current === 'number' ? Math.max(0, slot.current) : 0,
-        }))
+        .map((slot) => {
+          const max = typeof slot.max === 'number' ? Math.max(0, Math.trunc(slot.max)) : 0;
+          const current = typeof slot.current === 'number' ? Math.max(0, Math.trunc(slot.current)) : 0;
+          // 남은 칸이 전체 칸보다 많을 수는 없다. 칸 수를 줄인 뒤 저장된 값이 그럴 수 있다.
+          return { level: Math.min(9, Math.max(1, Math.trunc(slot.level))), max, current: Math.min(current, max) };
+        })
+        .sort((a, b) => a.level - b.level)
     : base.spell_slots;
 
   return {

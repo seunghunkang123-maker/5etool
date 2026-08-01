@@ -10,12 +10,92 @@ import { HpBar } from '@/components/ui/HpBar';
 import { toast } from '@/components/ui/Toast';
 import { toUserMessage } from '@/lib/errors';
 import { useAutosave, SAVE_STATUS_LABELS } from '@/hooks/useAutosave';
-import { ABILITY_KEYS, ABILITY_LABELS, type CharacterResource, type PlayerCharacter } from '@/data/types';
+import {
+  ABILITY_KEYS,
+  ABILITY_LABELS,
+  PROFICIENCY_LABELS,
+  PROFICIENCY_LEVELS,
+  type CharacterResource,
+  type PlayerCharacter,
+  type ProficiencyEntry,
+  type ProficiencyLevel,
+  type StoredProficiency,
+} from '@/data/types';
+import { proficiencyTotal, toProficiency, withProficiency } from '@/domain/proficiency';
 import { abilityModifier, formatModifier, proficiencyBonusForLevel, SKILL_LIST } from '@/domain/abilities';
 import { applyDamage, applyHealing, setTempHp } from '@/domain/hp';
 import { ImageUpload } from '@/features/library/ImageUpload';
 const InlineRichText = lazy(() => import('@/features/editor/InlineRichText').then((m) => ({ default: m.InlineRichText })));
 import { cn } from '@/lib/cn';
+
+/** 한 주문 레벨이 가질 수 있는 슬롯 칸 수 상한. */
+const MAX_SPELL_SLOTS_PER_LEVEL = 12;
+
+/**
+ * 내성·기술 한 줄.
+ * 숙련 정도(없음·절반·숙련·전문성)와 고정 보정치를 고르고 최종 수정치를 보여 준다.
+ */
+function ProficiencyRow({
+  label,
+  hint,
+  abilityMod,
+  proficiencyBonus,
+  stored,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  abilityMod: number;
+  proficiencyBonus: number;
+  stored: StoredProficiency;
+  onChange: (entry: ProficiencyEntry) => void;
+}) {
+  const entry = toProficiency(stored);
+  const total = proficiencyTotal(abilityMod, proficiencyBonus, stored);
+  const selectId = `prof-level-${label}`;
+  const bonusId = `prof-bonus-${label}`;
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-[var(--color-border)] px-2 py-1.5">
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{label}</span>
+        {hint ? <span className="block text-[10px] text-[var(--color-fg-muted)]">{hint}</span> : null}
+      </span>
+
+      <span className="w-10 shrink-0 text-right font-mono text-sm font-semibold tabular-nums" aria-label={`${label} 최종 수정치`}>
+        {formatModifier(total)}
+      </span>
+
+      <label className="sr-only" htmlFor={selectId}>
+        {label} 숙련
+      </label>
+      <Select
+        id={selectId}
+        value={entry.level}
+        onChange={(e) => onChange({ ...entry, level: e.target.value as ProficiencyLevel })}
+        className="w-28 shrink-0 px-2 py-1 text-xs"
+      >
+        {PROFICIENCY_LEVELS.map((level) => (
+          <option key={level} value={level}>
+            {PROFICIENCY_LABELS[level]}
+          </option>
+        ))}
+      </Select>
+
+      <label className="sr-only" htmlFor={bonusId}>
+        {label} 추가 보정
+      </label>
+      <Input
+        id={bonusId}
+        type="number"
+        value={entry.bonus}
+        onChange={(e) => onChange({ ...entry, bonus: Math.trunc(Number(e.target.value)) || 0 })}
+        className="w-14 shrink-0 px-1.5 py-1 text-center text-xs"
+        title="추가 보정"
+      />
+    </div>
+  );
+}
 
 /** 플레이어 캐릭터 시트 */
 export function CharacterSheet({ character, campaignId, onClose }: { character: PlayerCharacter; campaignId: string; onClose: () => void }) {
@@ -293,36 +373,41 @@ export function CharacterSheet({ character, campaignId, onClose }: { character: 
           </div>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium">내성 굴림 숙련</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {ABILITY_KEYS.map((key) => {
-                const bonus = abilityModifier(state.abilities[key]) + (state.saves[key] ? state.proficiency_bonus : 0);
-                return (
-                  <Checkbox
-                    key={key}
-                    label={`${ABILITY_LABELS[key]} ${formatModifier(bonus)}`}
-                    checked={state.saves[key] === true}
-                    onChange={(e) => set('saves', { ...state.saves, [key]: e.target.checked })}
-                  />
-                );
-              })}
+            <legend className="mb-1 text-sm font-medium">내성 굴림</legend>
+            <p className="mb-2 text-xs text-[var(--color-fg-muted)]">
+              숙련 정도를 고르고, 마법 물품처럼 따로 붙는 값은 보정 칸에 적습니다.
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {ABILITY_KEYS.map((key) => (
+                <ProficiencyRow
+                  key={key}
+                  label={ABILITY_LABELS[key]}
+                  abilityMod={abilityModifier(state.abilities[key])}
+                  proficiencyBonus={state.proficiency_bonus}
+                  stored={state.saves[key]}
+                  onChange={(entry) => set('saves', withProficiency(state.saves, key, entry))}
+                />
+              ))}
             </div>
           </fieldset>
 
           <fieldset>
-            <legend className="mb-2 text-sm font-medium">기술 숙련</legend>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {SKILL_LIST.map((skill) => {
-                const bonus = abilityModifier(state.abilities[skill.ability]) + (state.skills[skill.key] ? state.proficiency_bonus : 0);
-                return (
-                  <Checkbox
-                    key={skill.key}
-                    label={`${skill.label} ${formatModifier(bonus)}`}
-                    checked={state.skills[skill.key] === true}
-                    onChange={(e) => set('skills', { ...state.skills, [skill.key]: e.target.checked })}
-                  />
-                );
-              })}
+            <legend className="mb-1 text-sm font-medium">기술</legend>
+            <p className="mb-2 text-xs text-[var(--color-fg-muted)]">
+              전문성은 숙련 보너스의 2배, 재주꾼은 절반(내림)이 붙습니다.
+            </p>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {SKILL_LIST.map((skill) => (
+                <ProficiencyRow
+                  key={skill.key}
+                  label={skill.label}
+                  hint={ABILITY_LABELS[skill.ability]}
+                  abilityMod={abilityModifier(state.abilities[skill.ability])}
+                  proficiencyBonus={state.proficiency_bonus}
+                  stored={state.skills[skill.key]}
+                  onChange={(entry) => set('skills', withProficiency(state.skills, skill.key, entry) as Record<string, StoredProficiency>)}
+                />
+              ))}
             </div>
           </fieldset>
         </div>
@@ -394,6 +479,8 @@ function ResourcesTab({
 }) {
   const client = useQueryClient();
   const [name, setName] = useState('');
+  // 아직 없는 가장 낮은 주문 레벨. 1~9 중 빠진 번호를 채운다.
+  const nextSlotLevel = [1, 2, 3, 4, 5, 6, 7, 8, 9].find((level) => !state.sheet.spell_slots.some((s) => s.level === level)) ?? 10;
   const [max, setMax] = useState(1);
   const [recharge, setRecharge] = useState<CharacterResource['recharge']>('long');
 
@@ -420,48 +507,91 @@ function ResourcesTab({
           {state.sheet.spell_slots.length === 0 ? (
             <p className="text-sm text-[var(--color-fg-muted)]">아직 주문 슬롯이 없습니다.</p>
           ) : null}
-          {state.sheet.spell_slots.map((slot, index) => (
-            <div key={slot.level} className="flex items-center gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2">
-              <span className="w-16 text-sm font-medium">{slot.level}레벨</span>
-              <div className="flex flex-wrap gap-1">
-                {Array.from({ length: slot.max }).map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    aria-label={`${slot.level}레벨 슬롯 ${i + 1}`}
-                    aria-pressed={i < slot.current}
-                    onClick={() => {
-                      const slots = [...state.sheet.spell_slots];
-                      slots[index] = { ...slot, current: i < slot.current ? i : i + 1 };
-                      onChange({ ...state, sheet: { ...state.sheet, spell_slots: slots } });
-                    }}
-                    className={cn('h-6 w-6 rounded border-2', i < slot.current ? 'border-[var(--color-accent)] bg-[var(--color-accent)]' : 'border-[var(--color-border)]')}
+          {state.sheet.spell_slots.map((slot, index) => {
+            /** 칸 수를 바꾼다. 남은 칸이 최대치를 넘지 않게 함께 맞춘다. */
+            const setMax = (raw: number) => {
+              const max = Math.min(MAX_SPELL_SLOTS_PER_LEVEL, Math.max(0, Math.trunc(raw) || 0));
+              const slots = [...state.sheet.spell_slots];
+              slots[index] = { ...slot, max, current: Math.min(slot.current, max) };
+              onChange({ ...state, sheet: { ...state.sheet, spell_slots: slots } });
+            };
+
+            return (
+              <div key={slot.level} className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--color-border)] px-3 py-2">
+                <span className="w-16 text-sm font-medium">{slot.level}레벨</span>
+
+                {/* 슬롯 칸 수는 레벨과 클래스마다 다르므로 직접 정한다. */}
+                <div className="flex items-center gap-1">
+                  <label className="sr-only" htmlFor={`slot-max-${slot.level}`}>
+                    {slot.level}레벨 슬롯 개수
+                  </label>
+                  <Button size="sm" variant="ghost" aria-label={`${slot.level}레벨 슬롯 개수 줄이기`} onClick={() => setMax(slot.max - 1)}>
+                    −
+                  </Button>
+                  <Input
+                    id={`slot-max-${slot.level}`}
+                    type="number"
+                    min={0}
+                    max={MAX_SPELL_SLOTS_PER_LEVEL}
+                    value={slot.max}
+                    onChange={(e) => setMax(Number(e.target.value))}
+                    className="w-14 px-1.5 py-1 text-center text-sm"
                   />
-                ))}
+                  <Button size="sm" variant="ghost" aria-label={`${slot.level}레벨 슬롯 개수 늘리기`} onClick={() => setMax(slot.max + 1)}>
+                    +
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap gap-1">
+                  {slot.max === 0 ? <span className="text-xs text-[var(--color-fg-muted)]">칸 없음</span> : null}
+                  {Array.from({ length: slot.max }).map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      aria-label={`${slot.level}레벨 슬롯 ${i + 1}`}
+                      aria-pressed={i < slot.current}
+                      onClick={() => {
+                        const slots = [...state.sheet.spell_slots];
+                        slots[index] = { ...slot, current: i < slot.current ? i : i + 1 };
+                        onChange({ ...state, sheet: { ...state.sheet, spell_slots: slots } });
+                      }}
+                      className={cn('h-6 w-6 rounded border-2', i < slot.current ? 'border-[var(--color-accent)] bg-[var(--color-accent)]' : 'border-[var(--color-border)]')}
+                    />
+                  ))}
+                </div>
+
+                <span className="text-xs text-[var(--color-fg-muted)]">
+                  {slot.current} / {slot.max}
+                </span>
+
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="ml-auto"
+                  aria-label={`${slot.level}레벨 슬롯 삭제`}
+                  onClick={() =>
+                    onChange({ ...state, sheet: { ...state.sheet, spell_slots: state.sheet.spell_slots.filter((s) => s.level !== slot.level) } })
+                  }
+                >
+                  <Trash2 aria-hidden className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="ml-auto"
-                aria-label={`${slot.level}레벨 슬롯 삭제`}
-                onClick={() =>
-                  onChange({ ...state, sheet: { ...state.sheet, spell_slots: state.sheet.spell_slots.filter((s) => s.level !== slot.level) } })
-                }
-              >
-                <Trash2 aria-hidden className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
           <Button
             variant="secondary"
             size="sm"
             className="self-start"
+            disabled={nextSlotLevel > 9}
             onClick={() => {
-              const nextLevel = state.sheet.spell_slots.length + 1;
-              if (nextLevel > 9) return;
+              if (nextSlotLevel > 9) return;
               onChange({
                 ...state,
-                sheet: { ...state.sheet, spell_slots: [...state.sheet.spell_slots, { level: nextLevel, current: 2, max: 2 }] },
+                sheet: {
+                  ...state.sheet,
+                  // 새 레벨은 빠진 번호부터 채운다. 개수는 바로 위 칸에서 고칠 수 있다.
+                  spell_slots: [...state.sheet.spell_slots, { level: nextSlotLevel, current: 2, max: 2 }].sort((a, b) => a.level - b.level),
+                },
               });
             }}
           >

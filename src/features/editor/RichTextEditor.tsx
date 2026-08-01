@@ -77,11 +77,13 @@ export function RichTextEditor({ value, onChange, placeholder, editable = true, 
   });
 
   // 외부에서 문서가 교체되면(다른 카드 선택 등) 내용을 갱신한다.
+  // 편집 중이거나 한글을 조합하는 중에는 손대지 않는다. 커서가 처음으로 튄다.
   useEffect(() => {
     if (!editor) return;
+    if (editor.isFocused || editor.view.composing) return;
     const current = JSON.stringify(editor.getJSON());
     const next = JSON.stringify(value ?? { type: 'doc', content: [] });
-    if (current !== next && !editor.isFocused) {
+    if (current !== next) {
       editor.commands.setContent((value ?? { type: 'doc', content: [] }) as JSONContent, false);
     }
   }, [value, editor]);

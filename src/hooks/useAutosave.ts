@@ -84,6 +84,26 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
     [draftKey],
   );
 
+  /**
+   * 임시 저장을 글자마다 하지 않는다.
+   *
+   * localStorage 쓰기는 메인 스레드를 막는 동기 작업이라, 키를 누를 때마다 전체
+   * 상태를 직렬화해 쓰면 휴대폰에서 입력이 밀리고 한글 조합이 끊겨 커서가 튄다.
+   * 잠깐 쉬는 순간에 한 번만 쓴다. 저장에 실패할 때는 아래에서 즉시 한 번 더 쓴다.
+   */
+  const draftTimer = useRef<number | null>(null);
+  const persistDraftSoon = useCallback(
+    (next: T) => {
+      if (draftTimer.current) window.clearTimeout(draftTimer.current);
+      draftTimer.current = window.setTimeout(() => persistDraft(next), 400);
+    },
+    [persistDraft],
+  );
+
+  useEffect(() => () => {
+    if (draftTimer.current) window.clearTimeout(draftTimer.current);
+  }, []);
+
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
 
@@ -134,7 +154,7 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
     if (serialized === lastSaved.current) return;
 
     setStatus('dirty');
-    persistDraft(value);
+    persistDraftSoon(value);
 
     if (timerRef.current) window.clearTimeout(timerRef.current);
     timerRef.current = window.setTimeout(() => void runSave(), delay);
@@ -142,7 +162,7 @@ export function useAutosave<T>({ draftKey, value, onSave, delay = 1200, enabled 
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
     };
-  }, [value, delay, enabled, runSave, persistDraft]);
+  }, [value, delay, enabled, runSave, persistDraftSoon]);
 
   // 화면을 닫을 때 아직 저장되지 않은 변경이 있으면 즉시 저장한다.
   // (debounce 타이머가 언마운트로 취소되어 변경이 사라지는 것을 막는다.)

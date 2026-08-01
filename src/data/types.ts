@@ -389,6 +389,35 @@ export interface DeathSaves {
   failures: number;
 }
 
+/**
+ * 내성·기술 숙련 정도.
+ *
+ * 바드의 재주꾼(모든 기술에 숙련 보너스 절반)과 도적·바드의 전문성(숙련 보너스 두 배)을
+ * 표현하기 위해 단순 참/거짓이 아니라 단계로 둔다.
+ */
+export const PROFICIENCY_LEVELS = ['none', 'half', 'proficient', 'expertise'] as const;
+export type ProficiencyLevel = (typeof PROFICIENCY_LEVELS)[number];
+
+export const PROFICIENCY_LABELS: Record<ProficiencyLevel, string> = {
+  none: '없음',
+  half: '절반 (재주꾼)',
+  proficient: '숙련',
+  expertise: '전문성 (2배)',
+};
+
+export interface ProficiencyEntry {
+  level: ProficiencyLevel;
+  /** 마법 물품·특성 등으로 붙는 고정 보정치. */
+  bonus: number;
+}
+
+/**
+ * 데이터베이스에 저장된 값.
+ * 예전에는 참/거짓만 저장했으므로 두 형태를 모두 읽을 수 있어야 한다.
+ * (jsonb 열이라 스키마 변경 없이 그대로 섞여 들어간다.)
+ */
+export type StoredProficiency = boolean | Partial<ProficiencyEntry> | null | undefined;
+
 export interface CharacterSheetExtra {
   attacks: string;
   spells: string;
@@ -434,8 +463,8 @@ export interface PlayerCharacter {
   passive_perception: number;
   inspiration: boolean;
   abilities: AbilityScores;
-  saves: Partial<Record<AbilityKey, boolean>>;
-  skills: Record<string, boolean>;
+  saves: Partial<Record<AbilityKey, StoredProficiency>>;
+  skills: Record<string, StoredProficiency>;
   death_saves: DeathSaves;
   sheet: CharacterSheetExtra;
   share_settings: CharacterShareSettings;

@@ -92,6 +92,63 @@ test.describe('태그와 캐릭터 정리', () => {
     await page.getByRole('button', { name: '닫기', exact: true }).last().click();
     await expect(page.getByText('지울 용사')).toBeVisible();
 
+    // ── 내성·기술 숙련과 주문 슬롯 ────────────────────────────
+    await page.getByText('지울 용사').click();
+    await expect(sheet.getByLabel('캐릭터 이름')).toBeVisible();
+
+    // 레벨 5 → 숙련 보너스 +3
+    await sheet.getByLabel('레벨').fill('5');
+    await sheet.getByRole('tab', { name: '능력치' }).click();
+
+    // 민첩 16 → 수정치 +3
+    await sheet.getByLabel('민첩', { exact: true }).fill('16');
+
+    // 은신에 전문성(숙련 보너스 2배) → 3 + 6 = +9
+    await sheet.getByLabel('은신 숙련').selectOption('expertise');
+    await expect(sheet.getByLabel('은신 최종 수정치')).toHaveText('+9');
+
+    // 마법 물품 +1 → +10
+    await sheet.getByLabel('은신 추가 보정').fill('1');
+    await expect(sheet.getByLabel('은신 최종 수정치')).toHaveText('+10');
+
+    // 바드의 재주꾼: 절반(내림) → 비전학은 지능 10(+0) + 1 = +1
+    await sheet.getByLabel('비전학 숙련').selectOption('half');
+    await expect(sheet.getByLabel('비전학 최종 수정치')).toHaveText('+1');
+
+    // 민첩 내성 숙련 → 3 + 3 = +6
+    await sheet.getByLabel('민첩 숙련').selectOption('proficient');
+    await expect(sheet.getByLabel('민첩 최종 수정치')).toHaveText('+6');
+
+    // 주문 슬롯 개수를 직접 정한다.
+    await sheet.getByRole('tab', { name: '자원' }).click();
+    await sheet.getByRole('button', { name: '슬롯 레벨 추가' }).click();
+    await expect(sheet.getByRole('spinbutton', { name: '1레벨 슬롯 개수', exact: true })).toHaveValue('2');
+
+    await sheet.getByRole('spinbutton', { name: '1레벨 슬롯 개수', exact: true }).fill('4');
+    await expect(sheet.getByRole('button', { name: '1레벨 슬롯 4' })).toBeVisible();
+
+    // 세 번째 칸까지 채운다.
+    await sheet.getByRole('button', { name: '1레벨 슬롯 3' }).click();
+    await expect(sheet.getByText('3 / 4')).toBeVisible();
+
+    // 칸 수를 줄이면 남은 칸도 함께 줄어든다.
+    await sheet.getByRole('button', { name: '1레벨 슬롯 개수 줄이기' }).click();
+    await expect(sheet.getByRole('spinbutton', { name: '1레벨 슬롯 개수', exact: true })).toHaveValue('3');
+    await expect(sheet.getByRole('button', { name: '1레벨 슬롯 4' })).toHaveCount(0);
+    await expect(sheet.getByText('3 / 3')).toBeVisible();
+
+    await page.getByRole('button', { name: '닫기', exact: true }).last().click();
+
+    // 새로고침해도 남아 있다.
+    await page.reload();
+    await page.getByText('지울 용사').click();
+    await sheet.getByRole('tab', { name: '능력치' }).click();
+    await expect(sheet.getByLabel('은신 숙련')).toHaveValue('expertise');
+    await expect(sheet.getByLabel('은신 최종 수정치')).toHaveText('+10');
+    await sheet.getByRole('tab', { name: '자원' }).click();
+    await expect(sheet.getByRole('spinbutton', { name: '1레벨 슬롯 개수', exact: true })).toHaveValue('3');
+    await page.getByRole('button', { name: '닫기', exact: true }).last().click();
+
     await page.getByRole('button', { name: '지울 용사 삭제' }).click();
     const charConfirm = page.getByRole('dialog', { name: /지울 용사.*삭제할까요/ });
     await expect(charConfirm.getByText(/되돌릴 수 없습니다/)).toBeVisible();
